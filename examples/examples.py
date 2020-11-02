@@ -2,9 +2,9 @@ from pcooja import *
 from pcooja.pcap import *
 import random
 import os
-from custommotes import *
+#from custommotes import *
 
-CoojaSimulation.set_contiki_path("/home/jeremydub/contiki")
+CoojaSimulation.set_contiki_path("/home/user/contiki")
 
 folder = CoojaSimulation.get_contiki_path()+"/examples/ipv6"
 
@@ -97,38 +97,6 @@ def simulation_example4():
     # Run the simulation and store the log and radio data in specific files
     simulation.run(filename_prefix="simulation_", verbose=True)
 
-def simulation_example5():
-    csc_filepath=folder+"/simple-udp-rpl/unicast-example.csc"
-
-    # Use topology found in .csc file, mote types are not preserved
-    topology = Topology.from_csc(csc_filepath)
-
-    # Defining mote type for server
-    instance1 = RPLInstance(instance_id=10, dodag_id="aaaa::1", of=RPLInstance.OF_OF0, metric=None)
-    instance2 = RPLInstance(instance_id=20, dodag_id="bbbb::1", of=RPLInstance.OF_MRHOF, metric=None)
-    server = SimpleSkyMoteType(is_udp_server=True,advertised_instances=[instance1, instance2])
-
-    server.compile_firmware(clean=True, verbose=True)
-    input("..")
-
-    # Defining a client mote type that does not send messages and can join 2 instances
-    client_non_sender = SimpleSkyMoteType(max_instances=2, send_udp_datagram=False)
-
-    # Defining a client mote type that sends messages and can join 2 instances
-    destinations = ['aaaa::1']
-    client_sender = SimpleSkyMoteType(max_instances=2, send_udp_datagram=True, send_delay=20, ipv6_destinations=destinations, send_interval=10)
-
-    # Set mote types
-    topology.set_mote_type(1,server)
-    topology.set_mote_type(6, client_sender)
-    topology.set_mote_type([2,3,4,5,7,8,9,10,11], client_non_sender)
-
-    # Create a simulation with default RX/TX success ratio, seed and timeout values
-    simulation = CoojaSimulation(topology, timeout=120)
-
-    # Run the simulation and store the log and radio data in files
-    simulation.run(verbose=True,log_file="simulation.log", pcap_file="simulation.pcap")
-
 def simulation_example6():
     """
     Running a simulation in Cooja with GUI.
@@ -139,35 +107,6 @@ def simulation_example6():
     simulation = CoojaSimulation.from_csc(csc_filepath)
 
     # Run simulation in Cooja with GUI.
-    simulation.export()
-
-def simulation_example7():
-    """
-    Exporting a simulation in a folder.
-    """
-    topology = Topology.get_tree25_topology()
-
-    # Defining mote type for server
-    instance1 = RPLInstance(instance_id=10, dodag_id="aaaa::1", of=RPLInstance.OF_OF0, metric=None)
-    instance2 = RPLInstance(instance_id=20, dodag_id="aaaa::1", of=RPLInstance.OF_MRHOF, metric=None)
-    server = SimpleUdpServerType(instances=[instance1, instance2])
-
-    # Defining a client mote type that does not send messages
-    client_non_sender = SimpleClientType(max_instances=2, send_udp_datagram=False)
-
-    # Defining a client mote type that send messages
-    destinations = ['aaaa::1']
-    client_sender = SimpleClientType(max_instances=2, send_udp_datagram=True, start_delay=60, ipv6_destinations=destinations, send_interval=10)
-
-    # Set mote types
-    topology.set_mote_type(range(1,26), client_non_sender)
-    topology.set_mote_type(1,server)
-    topology.set_mote_type(25, client_sender)
-
-    # Create a simulation with default RX/TX success ratio, seed and timeout values
-    simulation = CoojaSimulation(topology, timeout=300)
-
-    # export the simulation in a folder
     simulation.export()
 
 def simulation_example8():
@@ -316,7 +255,7 @@ functions=[simulation_example6,\
            simulation_example8,simulation_example9,\
            pcap_example1,pcap_example2,pcap_example3]
 """
-functions=[simulation_example1]
+functions=[simulation_example2]
 
 for function in functions:
     os.system("clear")

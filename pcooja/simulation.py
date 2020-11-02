@@ -196,6 +196,10 @@ class CoojaSimulation:
             print(e)
 
     def run_with_gui(self, verbose=False):
+        
+        if self.script_runner == None:
+            self.script_runner = TimeoutScript(self.timeout, with_gui=False)
+
         temp_folder = tempfile.gettempdir()+"/"+"cooja_sim_"+hex(id(self))[2:]+"/"
         try:
             self.export(temp_folder, gui_enabled=True, verbose=True)
