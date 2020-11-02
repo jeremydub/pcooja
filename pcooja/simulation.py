@@ -49,6 +49,8 @@ class CoojaSimulation:
         if contiki_exists:
             CoojaSimulation.CONTIKI_PATH = path
             os.environ["CONTIKI_PATH"] = path
+            misc_path = os.path.abspath(__file__+"/../misc")
+            os.system('CONTIKI_PATH="%s" MODULE_PATH="%s" sh %s/fix_cooja.sh'%(path, misc_path, misc_path))
         else:
             raise SettingsError("Contiki Not Found")
 

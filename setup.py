@@ -17,6 +17,7 @@ setup(
     author_email='jeremy.dubrulle@umons.ac.be',
     url='https://github.com/jeremydub/pcooja',
     license=license,
+    include_package_data=True,
     packages=find_packages(exclude=('tests', 'docs'))
 )
 
