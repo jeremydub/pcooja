@@ -151,111 +151,19 @@ def simulation_example9():
     # Run the simulation and store the log and radio data in files
     simulation.run_with_gui()
 
-def pcap_example1():
-    """
-    Get Pcap file from a .csc simulation file
-    """
-    filepath=folder+"/rpl-udp/rpl-udp.csc"
+def simulation_example10():
+    # Defining cooja mote types and firmware
+    server = CoojaMoteType(folder+"/hello-world/hello-world.cooja")
 
-    # Create a simulation object from an existing .csc file.
-    simulation = CoojaSimulation.from_csc(filepath)
-    simulation.timeout = 100
+    client.compile_firmware(clean=True, verbose=True)
 
-    # Run the simulation and store the log and radio data in files
-    simulation.run(pcap_file="example.pcap", log_file="simulation.log", verbose=True)
-
-    # Pcap File handler
-    pcap = PcapHandler(simulation.get_pcap_filepath())
-
-    # Get radio packets as objects
-    frames = pcap.get_frames()
-
-    # Frame filter functions
-    is_dio_message = lambda packet : packet.has_header(ICMPv6Header) \
-                                      and packet.get_header(ICMPv6Header).code == ICMPv6Header.RPL_CODE_DIO
-    is_udp_datagram = lambda packet : packet.has_header(UDPHeader)
-
-    # All frames that contain ICMPv6 DIO messages
-    dio_messages = list(filter(is_dio_message, frames))
-
-    # All frames that contain UDP datagrams
-    udp_datagrams = list(filter(is_udp_datagram, frames))
-
-    # Print first DIO messages
-    print(dio_messages[0])
-
-    print("\n"*2)
-
-    # Print first UDP datagram
-    print(udp_datagrams[0])
-
-def pcap_example2():
-    pcap = PcapHandler("example.pcap")
-    frames=pcap.get_frames()
-
-    # Frame filter functions
-    is_dio_message = lambda packet : packet.has_header(ICMPv6Header) \
-                                      and packet.get_header(ICMPv6Header).code == ICMPv6Header.RPL_CODE_DIO
-    is_udp_datagram = lambda packet : packet.has_header(UDPHeader)
-
-    # All frames that contain ICMPv6 DIO messages
-    dio_messages = list(filter(is_dio_message, frames))
-
-    # All frames that contain UDP datagrams
-    udp_datagrams = list(filter(is_udp_datagram, frames))
-
-    # Print first DIO message and number of duplicates
-    print(dio_messages[0])
-    print("# of duplicates :", dio_messages[0].duplicate_counter)
-
-    print(2*"\n")
-
-    # Print first UDP datagram and number of duplicates
-    print(udp_datagrams[0])
-    print("# of duplicates :", udp_datagrams[0].duplicate_counter)
-
-    print(2*"\n")
-
-    # Print DIO messages (short representation)
-    for message in dio_messages[:5]:
-        print(repr(message))
-
-    print(2*"\n")
-
-    # Print UDP datagrams (short representation)
-    for datagram in udp_datagrams[:5]:
-        print(repr(datagram))
-
-
-def pcap_example3():
-    pcap = PcapHandler("example.pcap")
-    frames=pcap.get_frames()
-
-    # Filter frames that contain datagrams from a specific LL source
-    datagrams = pcap.get_datagrams()
-
-    # Print latency and hopcount for each unique datagram
-    for datagram in datagrams[:5]:
-        print(repr(datagram))
-        print("Latency:", datagram.latency(), ", Hopcount:", datagram.hopcount())
-        print("")
-
-    # Trace route of 3 first datagrams of the list
-    for datagram in datagrams[:3]:
-        current_hop_frame = datagram
-        i = 1
-        while current_hop_frame != None:
-            print("Hop #"+str(i), repr(current_hop_frame))
-            current_hop_frame = current_hop_frame.next_hop_frame
-            i += 1
-        print("")
 
 """
 functions=[simulation_example6,\
            simulation_example8,simulation_example9,\
            pcap_example1,pcap_example2,pcap_example3]
 """
-functions=[simulation_example2]
+functions=[simulation_example10]
 
 for function in functions:
     os.system("clear")
