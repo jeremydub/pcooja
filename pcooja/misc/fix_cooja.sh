@@ -9,8 +9,6 @@ if [ "$TEST" == 1 ] ; then
 fi
 if [ ! -f "$COOJAFOLDER/plugins/PcapLogger.java" ] ; then
     cp $MODULE_PATH/PcapLogger.java $MODULE_PATH/DGRMEvent.java $COOJAFOLDER/plugins/
-    cp $COOJAFOLDER/plugins/analyzers/PcapExporter.java $COOJAFOLDER/plugins/analyzers/PcapExporter.java.back
     cp $COOJAFOLDER/radiomediums/DirectedGraphMedium.java $COOJAFOLDER/radiomediums/DirectedGraphMedium.java.back
-    cp $MODULE_PATH/PcapExporter.java $COOJAFOLDER/plugins/analyzers/
     cp $MODULE_PATH/DirectedGraphMedium.java $COOJAFOLDER/radiomediums/
 fi

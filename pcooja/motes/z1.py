@@ -42,7 +42,7 @@ class Z1Mote(Mote):
 
 
 class Z1MoteType(MoteType):
-    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None, firmware_copy=True):
+    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None, firmware_copy=True, project_conf=None):
         default_interfaces=['org.contikios.cooja.interfaces.IPAddress',
         'org.contikios.cooja.mspmote.interfaces.MspClock',
         'org.contikios.cooja.mspmote.interfaces.MspMoteID',
@@ -58,9 +58,9 @@ class Z1MoteType(MoteType):
                 if interface not in default_interfaces:
                     default_interfaces.append(interface)
 
-        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.mspmote.Z1MoteType', firmware_command=firmware_command, platform_target="z1", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=firmware_copy)
+        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.mspmote.Z1MoteType', firmware_command=firmware_command, platform_target="z1", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=firmware_copy, project_conf=project_conf)
 
     def compile_firmware(self, make_options="", clean=False, verbose=False):
         return MoteType.compile_firmware(self, make_options=make_options, clean=clean, verbose=verbose)    
 
-Mote.Types.append(Z1Mote)
+Mote.platforms.append(Z1Mote)

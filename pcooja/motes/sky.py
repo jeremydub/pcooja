@@ -68,4 +68,4 @@ class SkyMoteType(MoteType):
     def compile_firmware(self, make_options="", clean=False, verbose=False):
         return MoteType.compile_firmware(self, make_options=make_options, clean=clean, verbose=verbose)
 
-Mote.Types.append(SkyMote)
+Mote.platforms.append(SkyMote)

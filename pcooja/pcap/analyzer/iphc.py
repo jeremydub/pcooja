@@ -291,7 +291,8 @@ class IPHCPacketAnalyzer:
             hbh_option_len = packet[hc06_ptr - hdr_len + 1]
 
             if hbh_option == IPHCHeader.EXT_HDR_HBH_RPL_OPTION:
-              header_ipv6.rpl_instance_id = packet[hc06_ptr - hdr_len + 3]
+                print("YESSSSSSSSSSSSSSSSSSSSSSS")
+                header_ipv6.rpl_instance_id = packet[hc06_ptr - hdr_len + 3]
             
             hdr_len -= (hbh_option_len +2)
 

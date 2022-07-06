@@ -39,18 +39,19 @@ class CoojaSimulation:
         # User-defined dictionary used for debugging or for later analysis
         self.debug_info=debug_info
         self.return_value=-1
-        self.script_runner = None
+        
+        self.set_script(TimeoutScript(self.timeout, with_gui=False))
 
     @staticmethod
     def set_contiki_path(path):
         if path[-1] == "/":
             path = path[:-1]
-        contiki_exists = os.path.exists(path+"/Makefile.include")
+        contiki_exists = os.path.exists(f"{path}/Makefile.include")
         if contiki_exists:
             CoojaSimulation.CONTIKI_PATH = path
             os.environ["CONTIKI_PATH"] = path
-            misc_path = os.path.abspath(__file__+"/../misc")
-            os.system('CONTIKI_PATH="%s" MODULE_PATH="%s" sh %s/fix_cooja.sh'%(path, misc_path, misc_path))
+            misc_path = os.path.abspath(f"{__file__}/../misc")
+            #os.system(f'CONTIKI_PATH="{path}" MODULE_PATH="{misc_path}" sh {misc_path}/fix_cooja.sh')
         else:
             raise SettingsError("Contiki Not Found")
 
@@ -58,7 +59,7 @@ class CoojaSimulation:
     def get_contiki_path():
         if CoojaSimulation.CONTIKI_PATH == None:
             contiki_path = "/home/user/contiki"
-            contiki_exists = os.path.exists(contiki_path+"/Makefile.include")
+            contiki_exists = os.path.exists(f"{contiki_path}/Makefile.include")
             if contiki_exists:
                 CoojaSimulation.CONTIKI_PATH = contiki_path
             else:
@@ -73,28 +74,24 @@ class CoojaSimulation:
                 enable_pcap=True, remove_csc=True, verbose=False, folder="data"):
         code = -1
 
-        if self.script_runner == None:
-            self.script_runner = TimeoutScript(self.timeout, with_gui=False)
-
-        temp_dir = "%s/cooja_sim_%s/"%(tempfile.gettempdir(),hex(id(self))[2:])
+        temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
         os.makedirs(temp_dir)
 
         try:
-            csc_filepath = temp_dir+str(self.id)+".csc"
+            csc_filepath = f"{temp_dir}{self.id}.csc"
             self.check_settings(verbose)
             CSCParser.export_simulation(self, csc_filepath, enable_log, enable_pcap)
             absolute_path=os.path.abspath(csc_filepath)
 
             contiki_path = self.get_contiki_path()
 
-            jar_location = contiki_path+"/tools/cooja/dist/"
+            jar_location = f"{contiki_path}/tools/cooja/dist/"
 
             # -Xshare:on is add for the CoojaMote support 
             # https://github.com/contiki-os/contiki/issues/2324
-            command="cd "+temp_dir+" && java -mx512m -jar "+jar_location+"cooja.jar -nogui="+absolute_path+" -contiki="+contiki_path
-            
-            #try to use the ant file but don't work
-            #command_ant = "cd "+temp_dir+"  && ant -buildfile "+self.get_contiki_path()+"/tools/cooja/build.xml run_nogui -Dbasedir="+temp_dir+" -Dargs="+absolute_path
+            command=f"cd {temp_dir} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -mx512m -jar {jar_location}cooja.jar -nogui={absolute_path}  -contiki={contiki_path}"
+
+            origin_pcap_file = None
 
             p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
             if verbose:
@@ -102,11 +99,10 @@ class CoojaSimulation:
                 time_remaining = ""
                 progress = "Starting..."
                 for line in iter(p.stdout.readline, ''):
-                    line = p.stdout.readline().decode()
                     if not line :
                         break
                     else:
-                        line = line.strip()
+                        line = line.decode().strip()
                         if "%, done in " in line:
                             parts = line.split(", done in ")
                             time_remaining = " | "+ parts[1]
@@ -117,11 +113,14 @@ class CoojaSimulation:
                         elif "Test script activated" in line:
                             progress = "0%"
                             time_remaining = ""
-                    print(("%s   [%s%s]"%(self.title, progress, time_remaining)).ljust(terminal_width), end="\r")
+                        elif "Opened pcap file" in line:
+                            origin_pcap_file = f"{temp_dir}{line.split()[-1]}"
+                    print((f"{self.title}   [{progress}{time_remaining}]").ljust(terminal_width), end="\r")
                 p.stdout.close()
                 print("")
             code=p.wait()
             self.return_value=code
+            input("----------------------")
 
             if self.has_suceed():
                 if folder != None and folder != "":
@@ -136,30 +135,27 @@ class CoojaSimulation:
                     prefix += str(filename_prefix)
                 if enable_log:
                     if log_file == None:
-                        log_file = prefix+str(self.id)+".log"
+                        log_file = f"{prefix}{self.id}.log"
 
                     self.log_file=log_file
                     log_file_folder = "/".join(log_file.split("/")[:-1])
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
                         os.makedirs(log_file_folder)
-                    #os.rename(temp_dir+"COOJA.testlog",log_file)
-                    shutil.copy(temp_dir+"COOJA.testlog",log_file)
+                    shutil.copy(f"{temp_dir}COOJA.testlog",log_file)
 
                 if enable_pcap:
                     if pcap_file == None:
-                        pcap_file = prefix+str(self.id)+".pcap"
-                    origin = temp_dir+str(self.id)+".pcap"
-                    if os.path.exists(origin):
+                        pcap_file = f"{prefix}{self.id}.pcap"
+                    if os.path.exists(origin_pcap_file):
                         self.pcap_file=pcap_file
                         pcap_file_folder = "/".join(pcap_file.split("/")[:-1])
                         if pcap_file_folder != '' and  not os.path.exists(pcap_file_folder):
                             os.makedirs(pcap_file_folder)
-                        #os.rename(origin,pcap_file)
-                        shutil.copy(origin,pcap_file)
+                        shutil.copy(origin_pcap_file,pcap_file)
             else:
-                if os.path.exists(temp_dir+"/COOJA.log"):
+                if os.path.exists(f"{temp_dir}/COOJA.log"):
                     print("\033[38;5;1m")
-                    os.system("cat "+temp_dir+"/COOJA.log")
+                    os.system(f"cat {temp_dir}/COOJA.log")
                     print("\033[0m")
         except CompilationError as e:
             print(e)
@@ -175,55 +171,19 @@ class CoojaSimulation:
 
             return code
 
-    def ant_clean(self):
-        """Clean the previews Cooja compilation """
-        try:
-            command="cd "+self.get_contiki_path()+"/tools/cooja && ant clean"
-            os.system(command)
-        except CompilationError as e:
-            print(e)
-        except SettingsError as e:
-            print(e)
-
-    def ant_jar(self):
-        """ Produce the jar of Cooja"""
-        try:
-            command="cd "+self.get_contiki_path()+"/tools/cooja && ant jar && ant \"copy configs\""
-            os.system(command)
-        except CompilationError as e:
-            print(e)
-        except SettingsError as e:
-            print(e)
-
     def run_with_gui(self, verbose=False):
         
         if self.script_runner == None:
             self.script_runner = TimeoutScript(self.timeout, with_gui=False)
 
-        temp_folder = tempfile.gettempdir()+"/"+"cooja_sim_"+hex(id(self))[2:]+"/"
+        temp_folder = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
         try:
             self.export(temp_folder, gui_enabled=True, verbose=True)
-            absolute_path=os.path.abspath(temp_folder+"/simulation.csc")
+            absolute_path=os.path.abspath(f"{temp_folder}/simulation.csc")
 
-
-            # -Xshare:on is add for the CoojaMote support 
-            # https://github.com/contiki-os/contiki/issues/2324
-
-            # command="export LD_LIBRARY_PATH=. && "+\
-            #         "cd "+self.get_contiki_path()+"/tools/cooja && "+\
-            #         "java -mx512m -classpath "+self.get_contiki_path()+"/tools/cooja/build/*:"+\
-            #         self.get_contiki_path()+"/tools/cooja/lib/jdom.jar:"+\
-            #         self.get_contiki_path()+"/tools/cooja/lib/log4j.jar:"+\
-            #         self.get_contiki_path()+"/tools/cooja/lib/jsyntaxpane.jar:"+\
-            #         self.get_contiki_path()+"/tools/cooja/lib/swingx-all-1.6.4.jar"+\
-            #     " -Xshare:on"+\
-            #         " -Duser.language=en"+\
-            #         " -jar dist/cooja.jar -quickstart="+absolute_path +\
-            #         " 2> /dev/null > /dev/null"
-
-            # Work better using the default build.xml and ant
-            command = "cd "+self.get_contiki_path()+"/tools/cooja && ant run"+\
-            " -Dargs=-quickstart="+absolute_path 
+            contiki_path = self.get_contiki_path()
+            jar_location = f"{contiki_path}/tools/cooja/dist/"
+            command=f"cd {temp_folder} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -mx512m -jar {jar_location}cooja.jar -quickstart={absolute_path} -contiki={contiki_path}"
             if not verbose:
                 command +=" 2> /dev/null > /dev/null"
             os.system(command)
@@ -238,20 +198,20 @@ class CoojaSimulation:
         errors = []
         for mote in self.topology:
             if mote.mote_type == None:
-                errors.append("Mote #"+str(mote.id)+" has no mote type")
+                errors.append(f"Mote #{mote.id} has no mote type")
 
         if len(errors) > 0:
             raise SettingsError("\n".join(errors))
 
         # Check mote type and firmware
         for mote_type in self.mote_types:
-            if(mote_type.get_firmware_copy()):
-                compiled = mote_type.compile_firmware(verbose=verbose)
+            if mote_type.get_firmware_copy():
+                compiled = mote_type.compile_firmware(verbose=verbose, clean=True)
                 if not compiled:
-                    errors.append("Firmware '"+str(mote_type.firmware_path)+"' did not compiled correctly")
+                    errors.append(f"Firmware '{mote_type.firmware_path}' did not compiled correctly")
                 # If compiling did not work
                 if not mote_type.firmware_exists():
-                    errors.append("Firmware '"+str(mote_type.firmware_path)+"' does not exist")
+                    errors.append(f"Firmware '{mote_type.firmware_path}' does not exist")
 
         if len(errors) > 0:
             raise SettingsError("\n".join(errors))
@@ -276,14 +236,14 @@ class CoojaSimulation:
         The file name containt the folder for exemple:
         file_name should be like ""data/simulation_20171003_150539_7f99d23f3b48"
         """
-        self.pcap_file = str(file_name)+".pcap"
-        self.log_file = str(file_name)+".log"
+        self.pcap_file = f"{file_name}.pcap"
+        self.log_file = f"{file_name}.log"
         self.return_value = 0
 
 
     def export(self, folder=None, gui_enabled=False, verbose=False):
         if folder == None:
-            folder = "simulation_"+str(self.id)
+            folder = f"simulation_{self.id}"
 
         if folder[-1] == "/":
             folder = folder[:-1]
@@ -296,27 +256,27 @@ class CoojaSimulation:
         sim = copy.deepcopy(self)
 
         if verbose:
-            print("Exporting simulation in '"+folder+"/' ...")
+            print(f"Exporting simulation in '{folder}/' ...")
 
         i=0
         for i in range(len(self.mote_types)):
             if self.mote_types[i].get_firmware_copy():
                 firmware_filename = self.mote_types[i].firmware_path.split("/")[-1]
-                new_path = folder+"/"+firmware_filename
+
+                new_path = f"{folder}/{firmware_filename}"
                 #only copy the firmware if necessary 
                 self.mote_types[i].save_firmware_as(new_path, verbose=verbose)
-                sim.mote_types[i].firmware_path="[CONFIG_DIR]/"+firmware_filename
+                sim.mote_types[i].firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
             else:
                 #update firmware link
                 firmware_filename = self.mote_types[i].firmware_path
                 if(len(firmware_filename) > len(CoojaSimulation.get_contiki_path()) \
                     and firmware_filename[0:len(CoojaSimulation.get_contiki_path())] == \
                     CoojaSimulation.get_contiki_path()):
-                    sim.mote_types[i].firmware_path="[CONTIKI_DIR]/"+firmware_filename[len(CoojaSimulation.get_contiki_path())+1:]
-                    # print sim.mote_types[i].firmware_path
+                    sim.mote_types[i].firmware_path=f"[CONTIKI_DIR]/{firmware_filename[len(CoojaSimulation.get_contiki_path())+1:]}"
 
         print("Saving simulation as Cooja file (.csc)")
-        CSCParser.export_simulation(sim, folder+"/simulation.csc", gui_enabled=gui_enabled)
+        CSCParser.export_simulation(sim, f"{folder}/simulation.csc", gui_enabled=gui_enabled)
 
 
     @staticmethod
@@ -348,8 +308,8 @@ class CoojaSimulation:
         if self.timeout / 60 == 0:
             duration += "sec"
         else :
-            duration = str(self.timeout/60) + "min"
-        return "\""+self.title+"\" : "+str(len(self.topology))+" motes, duration="+duration
+            duration = f"{self.timeout/60}min"
+        return f"\"{self.title}\" : {len(self.topology)} motes, duration={duration}"
 
 
 class CoojaSimulationWorker:

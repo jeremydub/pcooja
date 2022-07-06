@@ -1,4 +1,6 @@
 from pcooja.motes.mote import Mote, MoteType
+import os
+import shutil
 
 class CoojaMote(Mote):
     """ The biterate is in kbps """
@@ -8,33 +10,27 @@ class CoojaMote(Mote):
 
     def interfaces_to_xml(self, xb):
         Mote.interfaces_to_xml(self, xb)
-        xb.write('<interface_config>')
-        xb.indent()
-        xb.write('org.contikios.cooja.contikimote.interfaces.ContikiMoteID')
-        xb.write('<id>'+str(self.id)+'</id>')
-        xb.unindent()
-        xb.write('</interface_config>')
+        xb.write(f'''
+        <interface_config>
+            org.contikios.cooja.contikimote.interfaces.ContikiMoteID
+            <id>{self.id}</id>
+        </interface_config>''')
         if type(self.startup_delay) == int or type(self.startup_delay) == float :
-            xb.write('<interface_config>')
-            xb.indent()
-            xb.write('org.contikios.cooja.mspmote.interfaces.ContikiClock')
-            xb.write('<startup_delay_ms>'+str(int(self.startup_delay))+'</startup_delay_ms>')
-            xb.unindent()
-            xb.write('</interface_config>')
+            xb.write(f'''
+            <interface_config>
+                org.contikios.cooja.mspmote.interfaces.ContikiClock
+                <startup_delay_ms>{int(self.startup_delay)}</startup_delay_ms>
+            </interface_config>''')
 
-        xb.write('<interface_config>')
-        xb.indent()
-        xb.write('org.contikios.cooja.contikimote.interfaces.ContikiRadio')
-        xb.write('<bitrate>'+str(self.bitrate)+'</bitrate>')
-        xb.unindent()
-        xb.write('</interface_config>')
-
-        xb.write('<interface_config>')
-        xb.indent()
-        xb.write('org.contikios.cooja.contikimote.interfaces.ContikiEEPROM')
-        xb.write('<eeprom>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==</eeprom>')
-        xb.unindent()
-        xb.write('</interface_config>')
+        xb.write(f'''
+        <interface_config>
+            org.contikios.cooja.contikimote.interfaces.ContikiRadio
+            <bitrate>{self.bitrate}</bitrate>
+        </interface_config>
+        <interface_config>
+            org.contikios.cooja.contikimote.interfaces.ContikiEEPROM
+            <eeprom>{'A'*1366}==</eeprom>
+        </interface_config>''')
 
     @staticmethod
     def get_type():
@@ -61,7 +57,7 @@ class CoojaMote(Mote):
         return CoojaMote(mote_id, x, y, mote_type=mote_type, startup_delay=startup_delay, bitrate=bitrate)
 
 class CoojaMoteType(MoteType):
-    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None, firmware_copy=False):
+    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None, firmware_copy=True, project_conf=None):
         default_interfaces=['org.contikios.cooja.interfaces.Battery',
         'org.contikios.cooja.contikimote.interfaces.ContikiVib',
         'org.contikios.cooja.contikimote.interfaces.ContikiMoteID',
@@ -81,12 +77,50 @@ class CoojaMoteType(MoteType):
             for interface in interfaces:
                 if interface not in default_interfaces:
                     default_interfaces.append(interface)
+        
+        environment_variables = {
+                'CC':'gcc',
+                'LD':'ld',
+                'OBJCOPY':'objcopy',
+                'EXTRA_CC_ARGS':"-I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -fno-builtin-printf",
+                'AR':'ar',
+        }
 
+        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.contikimote.ContikiMoteType', firmware_command=firmware_command, platform_target="cooja", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=firmware_copy, symbols=False, environment_variables=environment_variables, project_conf=project_conf)
+            
+        libname = f"mtype{self.unique_id}"
+        self.environment_variables["CONTIKI_APP"] = self.make_target
+        self.environment_variables["LIBNAME"] = libname
+        self.environment_variables["CLASSNAME"] = f"Lib{self.unique_id}"
+        self.environment_variables["LINK_COMMAND_1"] = f"gcc -I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -shared -Wl,-Map=build/cooja/{libname}.map -o build/cooja/{libname}.cooja"
+        self.environment_variables["AR_COMMAND_1"] = f"ar rcf build/cooja/{libname}.a"
+        
+        self.map_file = ".".join(self.firmware_path.split(".")[:-1]+["map"])
+    
+    def to_xml(self, xb):
+        super().to_xml(xb)
+        xb.undo()
+        xb.indent()
+        xb.write(f'''
+        <mapfile>{self.map_file}</mapfile>
+        <javaclassname>{self.environment_variables["CLASSNAME"]}</javaclassname>''')
+        xb.unindent()
+        xb.write('</motetype>')
 
-        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.contikimote.ContikiMoteType', firmware_command=firmware_command, platform_target="cooja", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=firmware_copy, symbols=False)
+    def compile_firmware(self, make_options="", clean=False, verbose=False, target=None):
+        success = MoteType.compile_firmware(self, make_options=make_options, clean=clean, verbose=verbose)    
+        parts = self.firmware_path.split('/')
+        folder = "/".join(parts[:-1])
+        built_map_file = f"{folder}/build/cooja/{self.environment_variables['LIBNAME']}.map"
+        if success and os.path.exists(built_map_file):
+            shutil.copy2(built_map_file, self.map_file)
+        return success
 
-    def compile_firmware(self, make_options="", clean=False, verbose=False):
-        # We don't use firmware_copy, the firmware is compiled by cooja and not by a makefile
-        pass
+    
+    def save_firmware_as(self, filepath, verbose=False):
+        super().save_firmware_as(filepath, verbose=verbose)
+        dest_map_file = ".".join(filepath.split(".")[:-1]+["map"])
+        if os.path.exists(filepath) and os.path.exists(self.map_file):
+            shutil.copy2(self.map_file, dest_map_file)
 
-Mote.Types.append(CoojaMote)
+Mote.platforms.append(CoojaMote)

@@ -9,7 +9,7 @@ import math
 
 
 class Mote:
-    Types = []
+    platforms = []
     def __init__(self, id, x, y, mote_type=None, startup_delay=None, baseRSSI=-100.0):
         self.id = id
         
@@ -40,7 +40,7 @@ class Mote:
 
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        for t in Mote.Types:
+        for t in Mote.platforms:
             mote = t.from_xml(xml, x, y, mote_type)
             if mote != None:
                 return mote
@@ -92,7 +92,11 @@ class Mote:
 
 class MoteType:
     class_counter = 0
-    def __init__(self, firmware_path, identifier, java_class, platform_target, make_target=None, interfaces=[], description=None, firmware_command=None, firmware_copy=True, symbols=True):
+    def __init__(self, firmware_path, identifier, java_class, platform_target, make_target=None, interfaces=[], description=None, firmware_command=None, firmware_copy=True, symbols=True, environment_variables=None, project_conf=None):
+        
+        self.unique_id = f"{hex(id(self))[2:]}{self.class_counter}"
+        self.class_counter += 1
+        
         filename = firmware_path.split('/')[-1]
         if identifier == None:
             identifier = filename.split(".")[0]
@@ -101,10 +105,24 @@ class MoteType:
             description="Mote #"+identifier
 
         if make_target == None:
-            make_target = filename
+            make_target = identifier
+        
+        if firmware_path.endswith(".c"):
+            parts = firmware_path.split(".")[:-1]
+            parts[-1] += f"-{self.unique_id}"
+            firmware_path = ".".join(parts+[platform_target])
+            identifier = f"{identifier}-{self.unique_id}"
+
+        if environment_variables == None:
+            environment_variables = {}
 
         if type(firmware_path) == str and firmware_path[0] != "/" and os.path.exists(firmware_path):
             firmware_path = os.path.abspath(firmware_path)
+
+        if project_conf != None:
+            parts = firmware_path.split('/')
+            folder = "/".join(parts[:-1])
+            project_conf.set_folder(folder)
 
         self.identifier=identifier
         self.java_class=java_class
@@ -115,6 +133,9 @@ class MoteType:
         self.firmware_command = firmware_command
         self.firmware_copy = firmware_copy
         self.symbols=symbols
+        self.environment_variables = environment_variables
+        self.project_conf = project_conf
+
 
         common_interfaces=['org.contikios.cooja.interfaces.Position',\
             'org.contikios.cooja.interfaces.RimeAddress',\
@@ -127,7 +148,7 @@ class MoteType:
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
         filename = parts[-1]
-        return '['+self.identifier+': '+filename+']'
+        return f'[{self.make_target}: {filename}]'
 
     def __repr__(self):
         return self.__str__()
@@ -136,17 +157,17 @@ class MoteType:
         xb.write('<motetype>')
         xb.indent()
         xb.write(self.java_class)
-        xb.write('<identifier>'+self.identifier+'</identifier>')
-        xb.write('<description>'+self.description+'</description>')
+        xb.write(f'<identifier>{self.identifier}</identifier>')
+        xb.write(f'<description>{self.description}</description>')
         if self.firmware_copy:
             # xb.write('<source EXPORT="discard">'+self.firmware_path[0:-len(self.target)]+'c</source>')
             # xb.write('<commands EXPORT="discard">make '+self.make_target+' TARGET='+ self.target +'</commands>')
-            xb.write('<firmware EXPORT="copy">'+self.firmware_path+'</firmware>')
+            xb.write(f'<firmware EXPORT="copy">{self.firmware_path}</firmware>')
         else:
-            xb.write('<source>'+self.firmware_path[0:-len(self.platform_target)]+'c</source>')
-            xb.write('<commands>make '+self.make_target+' TARGET='+ self.platform_target +'</commands>')
+            xb.write(f'<source>{self.firmware_path[0:-len(self.platform_target)]}c</source>')
+            xb.write(f'<commands>make {self.make_target} TARGET={self.platform_target}</commands>')
         for interface in self.interfaces:
-            xb.write('<moteinterface>'+interface+'</moteinterface>')
+            xb.write(f'<moteinterface>{interface}</moteinterface>')
         if not self.symbols:
             xb.write('<symbols>false</symbols>')
         xb.unindent()
@@ -159,34 +180,46 @@ class MoteType:
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
         filename = parts[-1]
+        
+        if self.firmware_exists():
+            return True
 
         target_command = ""
         if(self.platform_target != None):
-            target_command = "TARGET="+self.platform_target+ " "
+            target_command = f"TARGET={self.platform_target} "
 
         if self.check_makefile():
+            if self.project_conf != None:
+                self.project_conf.update_file()
             if clean:
-                os.system("cd "+folder+" && rm -f "+filename+" && rm -r obj*/")
+                os.system(f"cd {folder} && rm -f {filename} && rm -rf build/{self.platform_target}")
             
-            error_file = "error_"+hex(id(self))[2:]+"_"+str(MoteType.class_counter)+".log"
-            MoteType.class_counter += 1
+            error_file = f"error_{self.unique_id}.log"
 
-            command = "cd "+folder+""
+            command = f"cd {folder}"
             if clean:
-                #command+=" && make clean "+ target_command+ "2> /dev/null > /dev/null"
-                command+=" && make clean 2> /dev/null > /dev/null"
+                command+=f" && make {target_command} clean 2> /dev/null > /dev/null"
+                #command+=" && make clean 2> /dev/null > /dev/null"
             if verbose:
-                print("Compiling Firmware for Mote Type "+repr(self))
+                print(f"Compiling Firmware for Mote Type {repr(self)}")
+
+            env = "&& "
+            for key,value in self.environment_variables.items():
+                env += f"{key}=\"{value}\" "
+            command += env
+            
             if self.firmware_command != None:
-                command += " && " + self.firmware_command
+                command += f"{self.firmware_command}"
             else:
-                command += " && make "+self.make_target+" -j8 "+ target_command + make_options
-            command = command + " 2> "+error_file+" > /dev/null"
+                command += f"make {self.make_target} -j8 {target_command}{make_options}"
+            command += f" 2> {error_file} > /dev/null"
             code = os.system(command)
+            if self.project_conf != None:
+                self.project_conf.restore_file()
             if code != 0:
-                if os.path.exists(folder+"/"+error_file):
+                if os.path.exists(f"{folder}/{error_file}"):
                     
-                    f = open(folder+"/"+error_file, "r")
+                    f = open(f"{folder}/{error_file}", "r")
                     for line in f:
                         line = line.strip()
                         if "error" in line or "undefined" in line or "overflowed by" in line:
@@ -195,9 +228,13 @@ class MoteType:
                             print("\033[93m"+line+"\033[0m")
 
                     f.close()
-                    os.remove(folder+"/"+error_file)
+                    os.remove(f"{folder}/{error_file}")
                 raise CompilationError("An error occured during firmware compilation")
-            os.remove(folder+"/"+error_file)
+            else:
+                expected_firmware_location = os.path.abspath(f"{folder}/{self.make_target}.{self.platform_target}")
+                if expected_firmware_location != self.firmware_path:
+                    os.rename(expected_firmware_location, self.firmware_path)
+            os.remove(f"{folder}/{error_file}")
             return code == 0
 
         return self.firmware_exists()
@@ -208,7 +245,7 @@ class MoteType:
         """
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
-        makefile_path = folder+"/Makefile"
+        makefile_path = f"{folder}/Makefile"
 
         valid = True
 
@@ -224,7 +261,7 @@ class MoteType:
                         contiki_path += "/"
                     if contiki_path[0] != "/":
                         contiki_path = folder+"/"+contiki_path
-                    if not os.path.exists(contiki_path+"Makefile.include"):
+                    if not os.path.exists(f"{contiki_path}Makefile.include"):
                         valid = False
             f.close()
         else:

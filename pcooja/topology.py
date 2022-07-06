@@ -130,22 +130,26 @@ class Topology:
         # Parsing Mote types 
         motetype_tags = simulation_tag.xpath("motetype")
         for motetype_tag in motetype_tags:
-            identifier, description, firmware_path, java_class = (None, None, None, None)
             mote_interfaces = motetype_tag.xpath("moteinterface/text()")
             identifier = motetype_tag.xpath("identifier/text()")
             description = motetype_tag.xpath("description/text()")
             firmware_path = motetype_tag.xpath("firmware/text()")
+            source_path = motetype_tag.xpath("source/text()")
             commands = motetype_tag.xpath("commands/text()")
             java_class = str(motetype_tag.text).strip()
 
-            firmware_command = None
-            if len(commands) > 0:
-                firmware_command = str(commands[0])
+            firmware_command = str(commands[0]) if len(commands) > 0 else None
 
             mote_interfaces = list(map(lambda x: str(x), mote_interfaces))
 
-            if None not in (identifier, description, firmware_path, java_class):
-                firmware_path = str(firmware_path[0]).replace('[CONFIG_DIR]', folder)\
+            if len(firmware_path) == 0:
+                firmware_path = ".".join(source_path[0].split(".")[:-1])+"."+platforms[java_class]
+            else:
+                firmware_path = firmware_path[0]
+                
+
+            if [] not in (identifier, description, java_class):
+                firmware_path = firmware_path.replace('[CONFIG_DIR]', folder)\
                                                 .replace('[CONTIKI_DIR]', os.environ["CONTIKI_PATH"])
 
                 mote_type = MoteType(identifier=str(identifier[0]), java_class=java_class,\
@@ -179,7 +183,7 @@ class Topology:
     @staticmethod
     def generate_topology_with_density(goal_density, n=25, transmitting_range=100, \
             root_type=None, node_type=None):
-        tries=0
+        attempts=0
         heap=[]
         root=SkyMote(1,0,0)
         heapq.heappush(heap, root)
@@ -206,7 +210,7 @@ class Topology:
                     min_value = abs(new_densities[i]-goal_density)
             heapq.heappush(heap, random_motes[min_i])
             topology.update_nbr_counts()
-            tries += 1
+            attempts += 1
         return topology
 
     @staticmethod
@@ -236,10 +240,10 @@ class Topology:
 
 def generate_topology_random(n=50, width=100, height=50, max_range=None):
     motes=[]
-    tries=0
+    attempts=0
     mote_id=0
 
-    while len(motes) < n and tries < 100*n:
+    while len(motes) < n and attempts < 100*n:
             
         if max_range == None :
             x = random.random()*width-width/2
@@ -248,7 +252,7 @@ def generate_topology_random(n=50, width=100, height=50, max_range=None):
             motes.append(SkyMote(mote_id,x,y))
             mote_id += 1
 
-        tries += 1
+        attempts += 1
     return motes
 
 def rotate2d(degrees,point,origin):

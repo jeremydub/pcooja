@@ -1,7 +1,7 @@
 class ScriptRunner():
   def __init__(self, timeout, with_gui=False):
     """
-      Define the script runner for the commad prompt mode.
+      Define the script runner for the command prompt mode.
     """
     self.timeout = timeout
     self.with_gui = with_gui

@@ -22,25 +22,32 @@ class IEEE802154Analyzer:
     fcfType = int(packet.data[pos + 0] & 0x07)
 
     # booleans
-    fcfSecurity = ((packet.data[pos + 0] >> 3) & 0x01) != 0
-    fcfPending = ((packet.data[pos + 0] >> 4) & 0x01) != 0
-    fcfAckRequested = ((packet.data[pos + 0] >> 5) & 0x01) != 0
-    fcfIntraPAN = ((packet.data[pos + 0] >> 6) & 0x01) != 0
+    fcfSecurity = ((packet.data[pos] >> 3) & 0x01) != 0
+    fcfPending = ((packet.data[pos] >> 4) & 0x01) != 0
+    fcfAckRequested = ((packet.data[pos] >> 5) & 0x01) != 0
+    fcfIntraPAN = ((packet.data[pos] >> 6) & 0x01) != 0
+    fcfReserved1 = ((packet.data[pos] >> 7) & 0x01) != 0
 
-    fcfDestAddrMode = int((packet.data[pos + 1] >> 2) & 0x03)
-    fcfFrameVersion = int((packet.data[pos + 1] >> 4) & 0x03)
-    fcfSrcAddrMode = int((packet.data[pos + 1] >> 6) & 0x03)
+    pos += 1
+    fcfSeqNumSuppresion = int(packet.data[pos] & 0x01)
+    fcfIEPresent = int((packet.data[pos] >> 1) & 0x01)
+    fcfDestAddrMode = int((packet.data[pos] >> 2) & 0x03)
+    fcfFrameVersion = int((packet.data[pos] >> 4) & 0x03)
+    fcfSrcAddrMode = int((packet.data[pos] >> 6) & 0x03)
 
+    pos += 1
     # Sequence number
-    seqNumber = int(packet.data[pos + 2] & 0xff)
+    if fcfFrameVersion < 2 or fcfSeqNumSuppresion == 0: 
+        seqNumber = int(packet.data[pos] & 0xff)
+        pos += 1
+    else:
+        seqNumber = None
 
     # Addressing Fields
     destPanID = 0
     srcPanID = 0
     sourceAddress = None
     destAddress = None
-
-    pos += 3
 
     if (fcfDestAddrMode > 0):
       destPanID = (packet.data[pos] & 0xff) + ((packet.data[pos + 1] & 0xff) << 8)
@@ -59,7 +66,7 @@ class IEEE802154Analyzer:
     if fcfSrcAddrMode > 0:
       if fcfIntraPAN:
         srcPanID = destPanID
-      else:
+      elif fcfFrameVersion < 2 or not(fcfSrcAddrMode == 3 and fcfDestAddrMode == 3):
         srcPanID = int((packet.data[pos] & 0xff) + ((packet.data[pos + 1] & 0xff) << 8))
         pos += 2
       

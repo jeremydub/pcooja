@@ -213,7 +213,7 @@ class PcapHandler:
       app_header2 = packet2.get_header(UDPHeader)
       cond2 = app_header1.src_port == app_header2.src_port and \
               app_header1.dest_port == app_header2.dest_port and \
-              str(packet1.getPayload()) == str(packet2.getPayload())
+              str(packet1.get_payload()) == str(packet2.get_payload())
     return cond1 and cond2
 
   def get_frames(self):

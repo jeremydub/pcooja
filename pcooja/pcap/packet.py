@@ -22,9 +22,10 @@ class Packet :
 
     if type(data) == str:
       self.data=bytes.fromhex(data)
-    elif type(data) == bytes:
+    elif type(data) == bytearray:
       self.data=data
     else:
+      print(data)
       raise TypeError("Data type must be either str or bytes")
 
     self.level = level
