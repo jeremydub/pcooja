@@ -4,4 +4,5 @@ from .projectconf import ProjectConf
 from .motes.z1 import Z1MoteType, Z1Mote
 from .motes.sky import SkyMoteType, SkyMote
 from .motes.cooja import CoojaMoteType, CoojaMote
+from .log import Log
 import pcooja.radio as radio
