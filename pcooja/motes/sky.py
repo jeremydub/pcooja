@@ -29,7 +29,7 @@ class SkyMote(Mote):
 
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        if mote_type.java_class != "org.contikios.cooja.mspmote.SkyMoteType" :
+        if mote_type.java_class != self._get_java_class():
             return None
         interface_config_tags = xml.xpath("interface_config")
         mote_id, startup_delay = (None, None)
@@ -45,27 +45,33 @@ class SkyMote(Mote):
 
 
 class SkyMoteType(MoteType):
-    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None):
-        default_interfaces=['org.contikios.cooja.mspmote.interfaces.MspClock',
-        'org.contikios.cooja.mspmote.interfaces.MspMoteID',
-        'org.contikios.cooja.interfaces.IPAddress',
-        'org.contikios.cooja.mspmote.interfaces.SkyButton',
-        'org.contikios.cooja.mspmote.interfaces.SkyFlash',
-        'org.contikios.cooja.mspmote.interfaces.SkyCoffeeFilesystem',
-        'org.contikios.cooja.mspmote.interfaces.Msp802154Radio',
-        'org.contikios.cooja.mspmote.interfaces.MspSerial',
-        'org.contikios.cooja.mspmote.interfaces.SkyLED',
-        'org.contikios.cooja.mspmote.interfaces.MspDebugOutput',
-        'org.contikios.cooja.mspmote.interfaces.SkyTemperature']
+    def __init__(self, firmware_path, **kwargs):
+        super().__init__(firmware_path, **kwargs)
+    
+    @staticmethod
+    def _get_platform_target():
+        return "sky"
 
-        if interfaces != None:
-            for interface in interfaces:
-                if interface not in default_interfaces:
-                    default_interfaces.append(interface)
+    @staticmethod
+    def _get_default_interfaces():
+        return MoteType._get_default_interfaces()+\
+            ['org.contikios.cooja.mspmote.interfaces.MspClock',
+            'org.contikios.cooja.mspmote.interfaces.MspMoteID',
+            'org.contikios.cooja.interfaces.IPAddress',
+            'org.contikios.cooja.mspmote.interfaces.SkyButton',
+            'org.contikios.cooja.mspmote.interfaces.SkyFlash',
+            'org.contikios.cooja.mspmote.interfaces.SkyCoffeeFilesystem',
+            'org.contikios.cooja.mspmote.interfaces.Msp802154Radio',
+            'org.contikios.cooja.mspmote.interfaces.MspSerial',
+            'org.contikios.cooja.mspmote.interfaces.SkyLED',
+            'org.contikios.cooja.mspmote.interfaces.MspDebugOutput',
+            'org.contikios.cooja.mspmote.interfaces.SkyTemperature']
 
-        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.mspmote.SkyMoteType', firmware_command=firmware_command, platform_target="sky", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=True)
+    @staticmethod
+    def _get_java_class():
+        return 'org.contikios.cooja.mspmote.SkyMoteType' 
 
-    def compile_firmware(self, make_options="", clean=False, verbose=False):
-        return MoteType.compile_firmware(self, make_options=make_options, clean=clean, verbose=verbose)
+    def compile_firmware(self, clean=False, verbose=False):
+        return MoteType.compile_firmware(self, clean=clean, verbose=verbose)
 
 Mote.platforms.append(SkyMote)

@@ -38,7 +38,7 @@ class CoojaMote(Mote):
         
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        if mote_type.java_class != "org.contikios.cooja.contikimote.ContikiMoteType" :
+        if mote_type.java_class != self._get_java_class():
             return None
         interface_config_tags = xml.xpath("interface_config")
         mote_id, startup_delay = (None, None)
@@ -57,36 +57,15 @@ class CoojaMote(Mote):
         return CoojaMote(mote_id, x, y, mote_type=mote_type, startup_delay=startup_delay, bitrate=bitrate)
 
 class CoojaMoteType(MoteType):
-    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None, firmware_copy=True, project_conf=None):
-        default_interfaces=['org.contikios.cooja.interfaces.Battery',
-        'org.contikios.cooja.contikimote.interfaces.ContikiVib',
-        'org.contikios.cooja.contikimote.interfaces.ContikiMoteID',
-        'org.contikios.cooja.contikimote.interfaces.ContikiRS232',
-        'org.contikios.cooja.contikimote.interfaces.ContikiBeeper',
-        'org.contikios.cooja.contikimote.interfaces.ContikiIPAddress',
-        'org.contikios.cooja.contikimote.interfaces.ContikiRadio',
-        'org.contikios.cooja.contikimote.interfaces.ContikiButton',
-        'org.contikios.cooja.contikimote.interfaces.ContikiPIR',
-        'org.contikios.cooja.contikimote.interfaces.ContikiClock',
-        'org.contikios.cooja.contikimote.interfaces.ContikiLED',
-        'org.contikios.cooja.contikimote.interfaces.ContikiCFS',
-        'org.contikios.cooja.contikimote.interfaces.ContikiEEPROM',
-        ]
-
-        if interfaces != None:
-            for interface in interfaces:
-                if interface not in default_interfaces:
-                    default_interfaces.append(interface)
-        
-        environment_variables = {
+    def __init__(self, firmware_path, **kwargs):
+        kwargs["environment_variables"] = {
                 'CC':'gcc',
                 'LD':'ld',
                 'OBJCOPY':'objcopy',
                 'EXTRA_CC_ARGS':"-I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -fno-builtin-printf",
                 'AR':'ar',
         }
-
-        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.contikimote.ContikiMoteType', firmware_command=firmware_command, platform_target="cooja", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=firmware_copy, symbols=False, environment_variables=environment_variables, project_conf=project_conf)
+        super().__init__(firmware_path, **kwargs)
             
         libname = f"mtype{self.unique_id}"
         self.environment_variables["CONTIKI_APP"] = self.make_target
@@ -107,8 +86,8 @@ class CoojaMoteType(MoteType):
         xb.unindent()
         xb.write('</motetype>')
 
-    def compile_firmware(self, make_options="", clean=False, verbose=False, target=None):
-        success = MoteType.compile_firmware(self, make_options=make_options, clean=clean, verbose=verbose)    
+    def compile_firmware(self, clean=False, verbose=False):
+        success = MoteType.compile_firmware(self, clean=clean, verbose=verbose)    
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
         built_map_file = f"{folder}/build/cooja/{self.environment_variables['LIBNAME']}.map"
@@ -122,5 +101,31 @@ class CoojaMoteType(MoteType):
         dest_map_file = ".".join(filepath.split(".")[:-1]+["map"])
         if os.path.exists(filepath) and os.path.exists(self.map_file):
             shutil.copy2(self.map_file, dest_map_file)
+    
+    @staticmethod
+    def _get_platform_target():
+        return "cooja"
+
+    @staticmethod
+    def _get_default_interfaces():
+        return MoteType._get_default_interfaces()+\
+            ['org.contikios.cooja.interfaces.Battery',
+            'org.contikios.cooja.contikimote.interfaces.ContikiVib',
+            'org.contikios.cooja.contikimote.interfaces.ContikiMoteID',
+            'org.contikios.cooja.contikimote.interfaces.ContikiRS232',
+            'org.contikios.cooja.contikimote.interfaces.ContikiBeeper',
+            'org.contikios.cooja.contikimote.interfaces.ContikiIPAddress',
+            'org.contikios.cooja.contikimote.interfaces.ContikiRadio',
+            'org.contikios.cooja.contikimote.interfaces.ContikiButton',
+            'org.contikios.cooja.contikimote.interfaces.ContikiPIR',
+            'org.contikios.cooja.contikimote.interfaces.ContikiClock',
+            'org.contikios.cooja.contikimote.interfaces.ContikiLED',
+            'org.contikios.cooja.contikimote.interfaces.ContikiCFS',
+            'org.contikios.cooja.contikimote.interfaces.ContikiEEPROM',
+            ]
+
+    @staticmethod
+    def _get_java_class():
+        return 'org.contikios.cooja.contikimote.ContikiMoteType' 
 
 Mote.platforms.append(CoojaMote)

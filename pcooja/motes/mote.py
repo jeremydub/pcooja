@@ -5,6 +5,7 @@ import os
 #from Simulation import *
 import shutil
 import math
+from abc import ABC, abstractmethod
 
 
 
@@ -90,9 +91,9 @@ class Mote:
         else:
             return False
 
-class MoteType:
+class MoteType(ABC):
     class_counter = 0
-    def __init__(self, firmware_path, identifier, java_class, platform_target, make_target=None, interfaces=[], description=None, firmware_command=None, firmware_copy=True, symbols=True, environment_variables=None, project_conf=None):
+    def __init__(self, firmware_path, identifier=None, make_target=None, makefile_variables=None, description=None, firmware_command=None, interfaces=None, environment_variables=None, project_conf=None):
         
         self.unique_id = f"{hex(id(self))[2:]}{self.class_counter}"
         self.class_counter += 1
@@ -110,7 +111,7 @@ class MoteType:
         if firmware_path.endswith(".c"):
             parts = firmware_path.split(".")[:-1]
             parts[-1] += f"-{self.unique_id}"
-            firmware_path = ".".join(parts+[platform_target])
+            firmware_path = ".".join(parts+[self._get_platform_target()])
             identifier = f"{identifier}-{self.unique_id}"
 
         if environment_variables == None:
@@ -124,25 +125,43 @@ class MoteType:
             folder = "/".join(parts[:-1])
             project_conf.set_folder(folder)
 
+        if makefile_variables == None:
+            makefile_variables = {}
+
         self.identifier=identifier
-        self.java_class=java_class
         self.firmware_path=firmware_path
         self.description = description
-        self.platform_target = platform_target #target platform
         self.make_target = make_target #target file
+        self.makefile_variables = makefile_variables
         self.firmware_command = firmware_command
-        self.firmware_copy = firmware_copy
-        self.symbols=symbols
         self.environment_variables = environment_variables
         self.project_conf = project_conf
 
+        all_interfaces = self._get_default_interfaces()
 
-        common_interfaces=['org.contikios.cooja.interfaces.Position',\
+        if interfaces != None:
+            for interface in interfaces:
+                if interface not in all_interfaces:
+                    all_interfaces.append(interface)
+
+        self.interfaces = all_interfaces
+
+    @staticmethod
+    def _get_default_interfaces():
+        return ['org.contikios.cooja.interfaces.Position',\
             'org.contikios.cooja.interfaces.RimeAddress',\
             'org.contikios.cooja.interfaces.Mote2MoteRelations',\
             'org.contikios.cooja.interfaces.MoteAttributes']
 
-        self.interfaces=common_interfaces+interfaces
+    @staticmethod
+    @abstractmethod
+    def _get_platform_target():
+        raise NotImplementedError("A Mote type should implement this method")
+
+    @staticmethod
+    @abstractmethod
+    def _get_java_class(self):
+        raise NotImplementedError("A Mote type should implement this method")
 
     def __str__(self):
         parts = self.firmware_path.split('/')
@@ -156,27 +175,19 @@ class MoteType:
     def to_xml(self, xb):
         xb.write('<motetype>')
         xb.indent()
-        xb.write(self.java_class)
+        xb.write(self._get_java_class())
         xb.write(f'<identifier>{self.identifier}</identifier>')
         xb.write(f'<description>{self.description}</description>')
-        if self.firmware_copy:
-            # xb.write('<source EXPORT="discard">'+self.firmware_path[0:-len(self.target)]+'c</source>')
-            # xb.write('<commands EXPORT="discard">make '+self.make_target+' TARGET='+ self.target +'</commands>')
-            xb.write(f'<firmware EXPORT="copy">{self.firmware_path}</firmware>')
-        else:
-            xb.write(f'<source>{self.firmware_path[0:-len(self.platform_target)]}c</source>')
-            xb.write(f'<commands>make {self.make_target} TARGET={self.platform_target}</commands>')
+        xb.write(f'<firmware EXPORT="copy">{self.firmware_path}</firmware>')
         for interface in self.interfaces:
             xb.write(f'<moteinterface>{interface}</moteinterface>')
-        if not self.symbols:
-            xb.write('<symbols>false</symbols>')
         xb.unindent()
         xb.write('</motetype>')
 
     def firmware_exists(self):
         return os.path.exists(self.firmware_path)
 
-    def compile_firmware(self, make_options="", clean=False, verbose=False, target=None):
+    def compile_firmware(self, clean=False, verbose=False):
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
         filename = parts[-1]
@@ -184,15 +195,13 @@ class MoteType:
         if self.firmware_exists():
             return True
 
-        target_command = ""
-        if(self.platform_target != None):
-            target_command = f"TARGET={self.platform_target} "
+        target_command = f"TARGET={self._get_platform_target()} "
 
         if self.check_makefile():
             if self.project_conf != None:
                 self.project_conf.update_file()
             if clean:
-                os.system(f"cd {folder} && rm -f {filename} && rm -rf build/{self.platform_target}")
+                os.system(f"cd {folder} && rm -f {filename} && rm -rf build/{self._get_platform_target()}")
             
             error_file = f"error_{self.unique_id}.log"
 
@@ -206,12 +215,14 @@ class MoteType:
             env = "&& "
             for key,value in self.environment_variables.items():
                 env += f"{key}=\"{value}\" "
+            for key,value in self.makefile_variables.items():
+                env += f"{key}=\"{value}\" "
             command += env
             
             if self.firmware_command != None:
                 command += f"{self.firmware_command}"
             else:
-                command += f"make {self.make_target} -j8 {target_command}{make_options}"
+                command += f"make {self.make_target} -j8 {target_command}"
             command += f" 2> {error_file} > /dev/null"
             code = os.system(command)
             if self.project_conf != None:
@@ -231,7 +242,7 @@ class MoteType:
                     os.remove(f"{folder}/{error_file}")
                 raise CompilationError("An error occured during firmware compilation")
             else:
-                expected_firmware_location = os.path.abspath(f"{folder}/{self.make_target}.{self.platform_target}")
+                expected_firmware_location = os.path.abspath(f"{folder}/{self.make_target}.{self._get_platform_target()}")
                 if expected_firmware_location != self.firmware_path:
                     os.rename(expected_firmware_location, self.firmware_path)
             os.remove(f"{folder}/{error_file}")
@@ -277,9 +288,9 @@ class MoteType:
         else:
             shutil.copy2(self.firmware_path, filepath)
 
-    def get_firmware_copy(self):
+    def is_compiled(self):
         """ Return if the firmware is compiled outside of cooja and after that copied inside the simulation or compiled by cooja based on the .csc file"""
-        return self.firmware_copy
+        return not self.firmware_path.endswith(".c") and self.firmware_exists()
 
 class CompilationError(Exception):
     pass

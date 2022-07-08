@@ -23,7 +23,7 @@ class CoojaSimulation:
     def __init__(self, topology, seed=None, title="Simulation",\
                  timeout=60, debug_info={}):
         if seed == None:
-            self.seed=random.randint(0,1000000)
+            self.seed=random.randint(0,10000000)
         else:
             self.seed=seed
         self.topology=copy.deepcopy(topology)
@@ -92,6 +92,7 @@ class CoojaSimulation:
             command=f"cd {temp_dir} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -mx512m -jar {jar_location}cooja.jar -nogui={absolute_path}  -contiki={contiki_path}"
 
             origin_pcap_file = None
+            segfault = False
 
             p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
             if verbose:
@@ -115,14 +116,15 @@ class CoojaSimulation:
                             time_remaining = ""
                         elif "Opened pcap file" in line:
                             origin_pcap_file = f"{temp_dir}{line.split()[-1]}"
+                        elif "Segmentation fault" in line or "Java Result: 139":
+                            segfault = True
                     print((f"{self.title}   [{progress}{time_remaining}]").ljust(terminal_width), end="\r")
                 p.stdout.close()
                 print("")
             code=p.wait()
             self.return_value=code
-            input("----------------------")
 
-            if self.has_suceed():
+            if self.has_suceed() or segfault or code == 139:
                 if folder != None and folder != "":
                     if not os.path.exists(folder) and (log_file == None or pcap_file == None) :
                         os.makedirs(folder)
@@ -205,10 +207,10 @@ class CoojaSimulation:
 
         # Check mote type and firmware
         for mote_type in self.mote_types:
-            if mote_type.get_firmware_copy():
+            if not mote_type.firmware_exists():
                 compiled = mote_type.compile_firmware(verbose=verbose, clean=True)
                 if not compiled:
-                    errors.append(f"Firmware '{mote_type.firmware_path}' did not compiled correctly")
+                    errors.append(f"Firmware '{mote_type.firmware_path}' did not compile correctly")
                 # If compiling did not work
                 if not mote_type.firmware_exists():
                     errors.append(f"Firmware '{mote_type.firmware_path}' does not exist")
@@ -260,20 +262,10 @@ class CoojaSimulation:
 
         i=0
         for i in range(len(self.mote_types)):
-            if self.mote_types[i].get_firmware_copy():
-                firmware_filename = self.mote_types[i].firmware_path.split("/")[-1]
-
-                new_path = f"{folder}/{firmware_filename}"
-                #only copy the firmware if necessary 
-                self.mote_types[i].save_firmware_as(new_path, verbose=verbose)
-                sim.mote_types[i].firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
-            else:
-                #update firmware link
-                firmware_filename = self.mote_types[i].firmware_path
-                if(len(firmware_filename) > len(CoojaSimulation.get_contiki_path()) \
-                    and firmware_filename[0:len(CoojaSimulation.get_contiki_path())] == \
-                    CoojaSimulation.get_contiki_path()):
-                    sim.mote_types[i].firmware_path=f"[CONTIKI_DIR]/{firmware_filename[len(CoojaSimulation.get_contiki_path())+1:]}"
+            firmware_filename = self.mote_types[i].firmware_path.split("/")[-1]
+            new_path = f"{folder}/{firmware_filename}"
+            self.mote_types[i].save_firmware_as(new_path, verbose=verbose)
+            sim.mote_types[i].firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
 
         print("Saving simulation as Cooja file (.csc)")
         CSCParser.export_simulation(sim, f"{folder}/simulation.csc", gui_enabled=gui_enabled)

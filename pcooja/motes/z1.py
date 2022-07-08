@@ -26,7 +26,7 @@ class Z1Mote(Mote):
 
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        if mote_type.java_class != "org.contikios.cooja.mspmote.Z1MoteType" :
+        if mote_type.java_class != self._get_java_class():
             return None
         interface_config_tags = xml.xpath("interface_config")
         mote_id, startup_delay = (None, None)
@@ -42,25 +42,31 @@ class Z1Mote(Mote):
 
 
 class Z1MoteType(MoteType):
-    def __init__(self, firmware_path, identifier=None, make_target=None, interfaces=None, firmware_command=None, description=None, firmware_copy=True, project_conf=None):
-        default_interfaces=['org.contikios.cooja.interfaces.IPAddress',
-        'org.contikios.cooja.mspmote.interfaces.MspClock',
-        'org.contikios.cooja.mspmote.interfaces.MspMoteID',
-        'org.contikios.cooja.mspmote.interfaces.MspButton',
-        'org.contikios.cooja.mspmote.interfaces.Msp802154Radio',
-        'org.contikios.cooja.mspmote.interfaces.MspDefaultSerial',
-        'org.contikios.cooja.mspmote.interfaces.MspLED',
-        'org.contikios.cooja.mspmote.interfaces.MspDebugOutput'
-        ]
+    def __init__(self, firmware_path, **kwargs):
+        super().__init__(firmware_path, **kwargs)
+    
+    @staticmethod
+    def _get_platform_target():
+        return "z1"
 
-        if interfaces != None:
-            for interface in interfaces:
-                if interface not in default_interfaces:
-                    default_interfaces.append(interface)
+    @staticmethod
+    def _get_default_interfaces():
+        return MoteType._get_default_interfaces()+\
+            ['org.contikios.cooja.interfaces.IPAddress',
+            'org.contikios.cooja.mspmote.interfaces.MspClock',
+            'org.contikios.cooja.mspmote.interfaces.MspMoteID',
+            'org.contikios.cooja.mspmote.interfaces.MspButton',
+            'org.contikios.cooja.mspmote.interfaces.Msp802154Radio',
+            'org.contikios.cooja.mspmote.interfaces.MspDefaultSerial',
+            'org.contikios.cooja.mspmote.interfaces.MspLED',
+            'org.contikios.cooja.mspmote.interfaces.MspDebugOutput'
+            ]
 
-        MoteType.__init__(self, firmware_path, identifier, 'org.contikios.cooja.mspmote.Z1MoteType', firmware_command=firmware_command, platform_target="z1", make_target=make_target, interfaces=default_interfaces, description=description, firmware_copy=firmware_copy, project_conf=project_conf)
+    @staticmethod
+    def _get_java_class():
+        return 'org.contikios.cooja.mspmote.Z1MoteType' 
 
-    def compile_firmware(self, make_options="", clean=False, verbose=False):
-        return MoteType.compile_firmware(self, make_options=make_options, clean=clean, verbose=verbose)    
+    def compile_firmware(self, clean=False, verbose=False):
+        return MoteType.compile_firmware(self, clean=clean, verbose=verbose)    
 
 Mote.platforms.append(Z1Mote)
