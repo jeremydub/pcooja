@@ -12,6 +12,12 @@ class UDGM(RadioMedium):
     self.success_ratio_rx = success_ratio_rx
     self.motes=motes
 
+    if success_ratio_tx < 0 or success_ratio_tx > 1:
+        raise Exception("'success_ratio_tx' must be in range [0,1]")
+    
+    if success_ratio_rx < 0 or success_ratio_rx > 1:
+        raise Exception("'success_ratio_rx' must be in range [0,1]")
+
 
   def change_ranges(transmitting_range=None, interference_range=None):
     if transmitting_range != None:
