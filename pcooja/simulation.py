@@ -10,6 +10,7 @@ import multiprocessing
 import tempfile
 import threading
 import traceback
+import glob
 
 from .motes.mote import CompilationError
 from .topology import Topology
@@ -73,6 +74,7 @@ class CoojaSimulation:
     def run(self, log_file=None, pcap_file=None, filename_prefix=None, enable_log=True, \
                 enable_pcap=True, remove_csc=True, verbose=False, folder="data"):
         code = -1
+        segfault = False
 
         temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
         os.makedirs(temp_dir)
@@ -116,15 +118,16 @@ class CoojaSimulation:
                             time_remaining = ""
                         elif "Opened pcap file" in line:
                             origin_pcap_file = f"{temp_dir}{line.split()[-1]}"
-                        elif "Segmentation fault" in line or "Java Result: 139":
+                        elif "Segmentation fault" in line or "Java Result: 139" in line:
                             segfault = True
                     print((f"{self.title}   [{progress}{time_remaining}]").ljust(terminal_width), end="\r")
                 p.stdout.close()
                 print("")
             code=p.wait()
             self.return_value=code
+            segfault = segfault or code == 139
 
-            if self.has_suceed() or segfault or code == 139:
+            if self.has_suceed() or segfault:
                 if folder != None and folder != "":
                     if not os.path.exists(folder) and (log_file == None or pcap_file == None) :
                         os.makedirs(folder)
@@ -166,12 +169,19 @@ class CoojaSimulation:
         except Exception as e:
             traceback.print_exc()
         finally:
+            if segfault:
+                self.handle_segfault()
+                segfault_folder = f"simulation-segfault-{hex(id(self))[2:]}"
+                #print(f"\033[38;5;1mSegmentation Fault occured during simulation ! Simulation has been exported in './{segfault_folder}' for further analysis.\033[0m")
+                #self.export(segfault_folder)
+            """
             if remove_csc and self.has_suceed():
                 os.remove(csc_filepath)
             for mote_type in self.mote_types:
                 if mote_type.from_source:
                     mote_type.remove_firmware()
             shutil.rmtree(temp_dir)
+            """
 
             return code
 
@@ -197,6 +207,33 @@ class CoojaSimulation:
             print(e)
         finally:
             shutil.rmtree(temp_folder)
+
+    def handle_segfault(self):
+        try:
+            with open("/proc/sys/kernel/core_pattern", "r") as f:
+                content = f.read().strip()
+        except Exception as e:
+            content = ""
+        
+        if content == "":
+            return
+        
+        now = datetime.datetime.now().timestamp()
+        coredumps = glob.glob(f"{content}*")
+        coredumps.sort(key=lambda path: now-os.path.getmtime(path))
+        if len(coredumps) == 0:
+            return
+
+        creation_date = os.path.getmtime(coredumps[0])
+        age = now-creation_date
+        if age > 1:
+            return
+
+        firmware = self.mote_types[0].firmware_path
+        command = f"gdb -batch -ex bt {firmware} {coredumps[0]} | grep '#'"
+        print("\033[33m")
+        os.system(command)
+        print("\033[0m")
 
     def check_settings(self,verbose=False):
         errors = []
