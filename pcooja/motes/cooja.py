@@ -62,17 +62,16 @@ class CoojaMoteType(MoteType):
                 'CC':'gcc',
                 'LD':'ld',
                 'OBJCOPY':'objcopy',
-                'EXTRA_CC_ARGS':"-I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -fno-builtin-printf",
+                #'EXTRA_CC_ARGS':"-I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -fno-builtin-printf",
                 'AR':'ar',
         }
         super().__init__(firmware_path, **kwargs)
             
         libname = f"mtype{self.unique_id}"
         self.environment_variables["CONTIKI_APP"] = self.make_target
-        self.environment_variables["LIBNAME"] = libname
+        self.environment_variables["LIBNAME"] = f"build/cooja/{libname}.cooja"
+        self.environment_variables["COOJA_VERSION"] = "2022052601"
         self.environment_variables["CLASSNAME"] = f"Lib{self.unique_id}"
-        self.environment_variables["LINK_COMMAND_1"] = f"gcc -I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -shared -Wl,-Map=build/cooja/{libname}.map -o build/cooja/{libname}.cooja"
-        self.environment_variables["AR_COMMAND_1"] = f"ar rcf build/cooja/{libname}.a"
         
         self.map_file = ".".join(self.firmware_path.split(".")[:-1]+["map"])
     
@@ -90,7 +89,7 @@ class CoojaMoteType(MoteType):
         success = MoteType.compile_firmware(self, clean=clean, verbose=verbose)    
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
-        built_map_file = f"{folder}/build/cooja/{self.environment_variables['LIBNAME']}.map"
+        built_map_file = f"{folder}/{self.environment_variables['LIBNAME'][:-6]}.map"
         if success and os.path.exists(built_map_file):
             shutil.copy2(built_map_file, self.map_file)
         return success
@@ -109,6 +108,9 @@ class CoojaMoteType(MoteType):
         map_file = ".".join(self.firmware_path.split(".")[:-1]+["map"])
         if os.path.exists(map_file):
             os.remove(map_file)
+
+    def get_expected_filename(self):
+        return self.environment_variables['LIBNAME']
     
     @staticmethod
     def _get_platform_target():

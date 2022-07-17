@@ -246,13 +246,16 @@ class MoteType(ABC):
                     os.remove(f"{folder}/{error_file}")
                 raise CompilationError("An error occured during firmware compilation")
             else:
-                expected_firmware_location = os.path.abspath(f"{folder}/{self.make_target}.{self._get_platform_target()}")
+                expected_firmware_location = os.path.abspath(f"{folder}/{self.get_expected_filename()}")
                 if expected_firmware_location != self.firmware_path:
                     os.rename(expected_firmware_location, self.firmware_path)
             os.remove(f"{folder}/{error_file}")
             return code == 0
 
         return self.firmware_exists()
+
+    def get_expected_filename(self):
+        return f"{self.make_target}.{self._get_platform_target()}"
 
     def check_makefile(self):
         """
