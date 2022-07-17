@@ -41,7 +41,7 @@ class ProjectConf:
         redefines = []
         for name, value in self.dico.items():
             redefines.append(f"#undef {name}")
-            if type(value) == str:
+            if type(value) == str and not value.isupper():
                 value = f"\"{value}\""
             redefines.append(f"#define {name} {value}")
 
