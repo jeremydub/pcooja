@@ -37,7 +37,7 @@ class Log:
     MESSAGE = 4
 
     modules = {}
-    revert_modules = {}
+    revert_modules = {None: "-"}
     module_idx = 0
 
     def __init__(self, log_file):
@@ -110,5 +110,5 @@ class Log:
     
     @staticmethod
     def print_message(message):
-        levels = {1:'ERR', 2:'WARN', 3:'INFO', 4:'DBG'}
+        levels = {1:'ERR', 2:'WARN', 3:'INFO', 4:'DBG', None:''}
         print(f"\033[38;5;166m{message[Log.TIME]/1000000:8.3f}s\033[0m|\033[38;5;34mID:{message[Log.NODE_ID]:2d}\033[0m|\033[38;5;3m{levels[message[Log.LOG_LEVEL]]}:{Log.revert_modules[message[Log.LOG_MODULE]]}\033[0m| {message[Log.MESSAGE]}")
