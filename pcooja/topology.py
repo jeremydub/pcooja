@@ -13,14 +13,14 @@ class Topology:
     def __init__(self, motes, radiomedium=None):
         self.motes=motes
         self.last_id=len(motes)
+        self.set_medium(radiomedium)
 
+    def set_medium(self, radiomedium):
         if radiomedium == None:
             self.radiomedium = UDGM()
         else:
             self.radiomedium = radiomedium
-
-        if len(motes) > 0:
-            self.update_nbr_counts()
+        self._update_nbr_counts()
 
     def get_density(self):
         density=0.0
@@ -31,17 +31,17 @@ class Topology:
 
         return density
 
-    def update_nbr_counts(self):
+    def _update_nbr_counts(self):
         for mote in self.motes:
             mote.nbr_count=self.get_nbr_count(mote)
 
 
     def get_nbr_count(self, mote):
-        mote_nbr_count=0
-        for other in self.motes:
-            if mote != other and self.is_in_range(mote,other):
-                mote_nbr_count += 1
-        return mote_nbr_count
+        return len(self.get_neighbors(mote))
+    
+    def get_neighbors(self, mote):
+        return list(filter(lambda m: m != mote and self.is_in_range(mote,m), \
+                           self.motes))
 
     def is_in_range(self, mote1, mote2):
         """ Return if the mote1 can send message to the mote2 """
