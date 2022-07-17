@@ -113,6 +113,9 @@ class MoteType(ABC):
             parts[-1] += f"-{self.unique_id}"
             firmware_path = ".".join(parts+[self._get_platform_target()])
             identifier = f"{identifier}-{self.unique_id}"
+            from_source = True
+        else:
+            from_source = False
 
         if environment_variables == None:
             environment_variables = {}
@@ -136,6 +139,7 @@ class MoteType(ABC):
         self.firmware_command = firmware_command
         self.environment_variables = environment_variables
         self.project_conf = project_conf
+        self.from_source = from_source
 
         all_interfaces = self._get_default_interfaces()
 
@@ -287,6 +291,12 @@ class MoteType(ABC):
                 shutil.copy2(self.firmware_path, filepath)
         else:
             shutil.copy2(self.firmware_path, filepath)
+        firmware_filename = self.firmware_path.split("/")[-1]
+        self.firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
+    
+    def remove_firmware(self):
+        if self.firmware_exists():
+            os.remove(self.firmware_path)
 
     def is_compiled(self):
         """ Return if the firmware is compiled outside of cooja and after that copied inside the simulation or compiled by cooja based on the .csc file"""

@@ -168,7 +168,9 @@ class CoojaSimulation:
         finally:
             if remove_csc and self.has_suceed():
                 os.remove(csc_filepath)
-
+            for mote_type in self.mote_types:
+                if mote_type.from_source:
+                    mote_type.remove_firmware()
             shutil.rmtree(temp_dir)
 
             return code
@@ -265,7 +267,6 @@ class CoojaSimulation:
             firmware_filename = self.mote_types[i].firmware_path.split("/")[-1]
             new_path = f"{folder}/{firmware_filename}"
             self.mote_types[i].save_firmware_as(new_path, verbose=verbose)
-            sim.mote_types[i].firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
 
         print("Saving simulation as Cooja file (.csc)")
         CSCParser.export_simulation(sim, f"{folder}/simulation.csc", gui_enabled=gui_enabled)
