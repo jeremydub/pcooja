@@ -91,10 +91,9 @@ class CoojaSimulation:
 
             # -Xshare:on is add for the CoojaMote support 
             # https://github.com/contiki-os/contiki/issues/2324
-            command=f"cd {temp_dir} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -mx512m -jar {jar_location}cooja.jar -nogui={absolute_path}  -contiki={contiki_path}"
+            command=f"cd {temp_dir} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -Djava.awt.headless=true -mx512m -jar {jar_location}cooja.jar -nogui={absolute_path}  -contiki={contiki_path}"
 
             origin_pcap_file = None
-            segfault = False
 
             p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
             if verbose:
