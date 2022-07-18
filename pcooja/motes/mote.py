@@ -295,7 +295,7 @@ class MoteType(ABC):
         else:
             shutil.copy2(self.firmware_path, filepath)
         firmware_filename = self.firmware_path.split("/")[-1]
-        self.firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
+        #self.firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
     
     def remove_firmware(self):
         if self.firmware_exists():

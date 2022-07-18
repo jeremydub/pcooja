@@ -101,7 +101,7 @@ class CoojaMoteType(MoteType):
         map_filename = dest_map_file.split("/")[-1]
         if os.path.exists(filepath) and os.path.exists(self.map_file):
             shutil.copy2(self.map_file, dest_map_file)
-            self.map_file=f"[CONFIG_DIR]/{map_filename}"
+            #self.map_file=f"[CONFIG_DIR]/{map_filename}"
     
     def remove_firmware(self):
         super().remove_firmware()
