@@ -1,11 +1,11 @@
+from lxml import etree
+
 from pcooja.radio.udgm.medium import UDGM
 from pcooja.radio.dgrm.medium import DGRM
+from pcooja.topology import Topology
 
 class CSCParser:
-    @staticmethod
-    def import_simulation(simulation):
-        """"""
-    
+
     @staticmethod
     def export_simulation(simulation, filename, enable_log=True, enable_pcap=True, gui_enabled=False):
         """
@@ -15,13 +15,6 @@ class CSCParser:
 
         xb.write(f'''<?xml version="1.0" encoding="UTF-8"?>
         <simconf>
-            <project EXPORT="discard">[APPS_DIR]/mrm</project>
-            <project EXPORT="discard">[APPS_DIR]/mspsim</project>
-            <project EXPORT="discard">[APPS_DIR]/avrora</project>
-            <project EXPORT="discard">[APPS_DIR]/serial_socket</project>
-            <project EXPORT="discard">[APPS_DIR]/collect-view</project>
-            <project EXPORT="discard">[APPS_DIR]/powertracker</project>
-            
             <simulation>
                 <title>{simulation.title}</title>
                 <randomseed>{simulation.seed}</randomseed>
@@ -46,7 +39,7 @@ class CSCParser:
         xb.write('</simulation>')
 
         #Run script
-        simulation.script_runner.to_xml(xb, gui_enabled)
+        simulation.script_runner.to_xml(xb, False)
 
         if gui_enabled:
             xb.write('''

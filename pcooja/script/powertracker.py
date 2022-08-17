@@ -1,4 +1,4 @@
-from ..runner import ScriptRunner
+from .runner import ScriptRunner
 
 class PowerTrackerScript(ScriptRunner):
   """ Load the default script add some the powertracker trace at the end

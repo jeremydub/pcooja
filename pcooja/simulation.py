@@ -16,13 +16,17 @@ from .motes.mote import CompilationError
 from .topology import Topology
 from .script.runner import ScriptRunner
 from .script.timeout import TimeoutScript
+from .script.load import LoadScript
 from .radio import *
 from .parser.csc import CSCParser
+
+import logging
+logger = logging.getLogger("pcooja")
 
 class CoojaSimulation:
     CONTIKI_PATH = None
     def __init__(self, topology, seed=None, title="Simulation",\
-                 timeout=60, debug_info={}):
+                 timeout=600, debug_info={}, clean_firmwares=False):
         if seed == None:
             self.seed=random.randint(0,10000000)
         else:
@@ -32,14 +36,17 @@ class CoojaSimulation:
         self.timeout=timeout
         now=datetime.datetime.now()
         self.id=now.strftime("%Y%d%m_%H%M%S_") + hex(id(self))[2:]
+
         mote_types=[]
         for mote in topology:
             if mote.mote_type != None and mote.mote_type not in mote_types:
                 mote_types.append(mote.mote_type)
         self.mote_types=mote_types
+        
         # User-defined dictionary used for debugging or for later analysis
         self.debug_info=debug_info
         self.return_value=-1
+        self.clean_firmwares = clean_firmwares
         
         self.set_script(TimeoutScript(self.timeout, with_gui=False))
 
@@ -72,16 +79,16 @@ class CoojaSimulation:
         self.script_runner = script_runner
 
     def run(self, log_file=None, pcap_file=None, filename_prefix=None, enable_log=True, \
-                enable_pcap=True, remove_csc=True, verbose=False, folder="data"):
+                enable_pcap=True, remove_csc=True, folder="data"):
         code = -1
         segfault = False
 
-        temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
+        temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{self.id}/"
         os.makedirs(temp_dir)
 
         try:
             csc_filepath = f"{temp_dir}{self.id}.csc"
-            self.check_settings(verbose)
+            self.check_settings()
             CSCParser.export_simulation(self, csc_filepath, enable_log, enable_pcap)
             absolute_path=os.path.abspath(csc_filepath)
 
@@ -92,12 +99,18 @@ class CoojaSimulation:
             # -Xshare:on is add for the CoojaMote support 
             # https://github.com/contiki-os/contiki/issues/2324
             command=f"cd {temp_dir} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -Djava.awt.headless=true -mx512m -jar {jar_location}cooja.jar -nogui={absolute_path}  -contiki={contiki_path}"
+            command=f"ant -e -logger org.apache.tools.ant.listener.SimpleBigProjectLogger -f {contiki_path}/tools/cooja/build.xml run_bigmem -Dargs='-nogui={absolute_path} -contiki={contiki_path} -logdir={temp_dir}'"
 
             origin_pcap_file = None
+            test_failed = False
+
+            logger.info("Starting Simulation")
+            logger.debug(f" - Title : {self.title}")
+            logger.debug(f" - Random seed : {self.seed}")
+            logger.debug(f" - # nodes : {len(self.topology.motes)}")
 
             p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-            if verbose:
-                terminal_width = int(subprocess.check_output(['stty', 'size']).split()[1])
+            if logger.level <= logging.INFO:
                 time_remaining = ""
                 progress = "Starting..."
                 for line in iter(p.stdout.readline, ''):
@@ -119,14 +132,18 @@ class CoojaSimulation:
                             origin_pcap_file = f"{temp_dir}{line.split()[-1]}"
                         elif "Segmentation fault" in line or "Java Result: 139" in line:
                             segfault = True
-                    print((f"{self.title}   [{progress}{time_remaining}]").ljust(terminal_width), end="\r")
+                        elif "TEST FAILED" in line:
+                            test_failed = True
+                    logger.info(f"{self.title}   [{progress}{time_remaining}]\r")
                 p.stdout.close()
-                print("")
+                logger.info("")
             code=p.wait()
             self.return_value=code
-            segfault = segfault or code == 139
+            segfault = segfault or code == 139 or code == 134
 
-            if self.has_suceed() or segfault:
+            if self.has_suceed() or segfault or test_failed:
+                if test_failed:
+                    logger.warn("Simulator script resulted in FAILED TEST")
                 if folder != None and folder != "":
                     if not os.path.exists(folder) and (log_file == None or pcap_file == None) :
                         os.makedirs(folder)
@@ -146,6 +163,7 @@ class CoojaSimulation:
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
                         os.makedirs(log_file_folder)
                     shutil.copy(f"{temp_dir}COOJA.testlog",log_file)
+                    logger.debug(f"Saved COOJA.testlog to {log_file}")
 
                 if enable_pcap:
                     if pcap_file == None:
@@ -156,6 +174,9 @@ class CoojaSimulation:
                         if pcap_file_folder != '' and  not os.path.exists(pcap_file_folder):
                             os.makedirs(pcap_file_folder)
                         shutil.copy(origin_pcap_file,pcap_file)
+                        logger.debug(f"Saved captured packets to {pcap_file}")
+                    else:
+                        logger.warning(f"Could not find {origin_pcap_file}")
             else:
                 if os.path.exists(f"{temp_dir}/COOJA.log"):
                     print("\033[38;5;1m")
@@ -173,32 +194,29 @@ class CoojaSimulation:
                 segfault_folder = f"simulation-segfault-{hex(id(self))[2:]}"
                 #print(f"\033[38;5;1mSegmentation Fault occured during simulation ! Simulation has been exported in './{segfault_folder}' for further analysis.\033[0m")
                 #self.export(segfault_folder)
-            """
             if remove_csc and self.has_suceed():
                 os.remove(csc_filepath)
             for mote_type in self.mote_types:
-                if mote_type.from_source:
+                if mote_type.is_compilable():
                     mote_type.remove_firmware()
             shutil.rmtree(temp_dir)
-            """
 
             return code
 
-    def run_with_gui(self, verbose=False):
+    def run_with_gui(self):
         
         if self.script_runner == None:
             self.script_runner = TimeoutScript(self.timeout, with_gui=False)
 
         temp_folder = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
         try:
-            self.export(temp_folder, gui_enabled=True, verbose=True)
+            self.export(temp_folder, gui_enabled=True)
             absolute_path=os.path.abspath(f"{temp_folder}/simulation.csc")
 
             contiki_path = self.get_contiki_path()
             jar_location = f"{contiki_path}/tools/cooja/dist/"
             command=f"cd {temp_folder} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -mx512m -jar {jar_location}cooja.jar -quickstart={absolute_path} -contiki={contiki_path}"
-            if not verbose:
-                command +=" 2> /dev/null > /dev/null"
+            command +=" 2> /dev/null > /dev/null"
             os.system(command)
         except CompilationError as e:
             print(e)
@@ -208,6 +226,7 @@ class CoojaSimulation:
             shutil.rmtree(temp_folder)
 
     def handle_segfault(self):
+        logger.debug(f"Handling segmentation fault")
         try:
             with open("/proc/sys/kernel/core_pattern", "r") as f:
                 content = f.read().strip()
@@ -221,11 +240,13 @@ class CoojaSimulation:
         coredumps = glob.glob(f"{content}*")
         coredumps.sort(key=lambda path: now-os.path.getmtime(path))
         if len(coredumps) == 0:
+            logger.warning(f"Did not find core dump")
             return
 
         creation_date = os.path.getmtime(coredumps[0])
         age = now-creation_date
-        if age > 1:
+        if age > 10:
+            logger.warning(f"Core dump is too old. Probably not ours ..")
             return
 
         firmware = self.mote_types[0].firmware_path
@@ -234,7 +255,7 @@ class CoojaSimulation:
         os.system(command)
         print("\033[0m")
 
-    def check_settings(self,verbose=False):
+    def check_settings(self):
         errors = []
         for mote in self.topology:
             if mote.mote_type == None:
@@ -245,11 +266,11 @@ class CoojaSimulation:
 
         # Check mote type and firmware
         for mote_type in self.mote_types:
-            if not mote_type.firmware_exists():
-                compiled = mote_type.compile_firmware(verbose=verbose, clean=True)
-                if not compiled:
-                    errors.append(f"Firmware '{mote_type.firmware_path}' did not compile correctly")
-                # If compiling did not work
+            if not mote_type.firmware_exists() or mote_type.compile_command != None or self.clean_firmwares:
+                if mote_type.is_compilable():
+                    compiled = mote_type.compile_firmware(clean=self.clean_firmwares)
+                    if not compiled:
+                        errors.append(f"Firmware '{mote_type.firmware_path}' did not compile correctly")
                 if not mote_type.firmware_exists():
                     errors.append(f"Firmware '{mote_type.firmware_path}' does not exist")
 
@@ -281,7 +302,7 @@ class CoojaSimulation:
         self.return_value = 0
 
 
-    def export(self, folder=None, gui_enabled=False, verbose=False):
+    def export(self, folder=None, gui_enabled=False):
         if folder == None:
             folder = f"simulation_{self.id}"
 
@@ -291,45 +312,59 @@ class CoojaSimulation:
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        self.check_settings(verbose=verbose)
+        self.check_settings()
 
         sim = copy.deepcopy(self)
 
-        if verbose:
-            print(f"Exporting simulation in '{folder}/' ...")
+        logger.info(f"Exporting simulation in '{folder}/' ...")
 
         i=0
         for i in range(len(self.mote_types)):
             firmware_filename = self.mote_types[i].firmware_path.split("/")[-1]
             new_path = f"{folder}/{firmware_filename}"
-            self.mote_types[i].save_firmware_as(new_path, verbose=verbose)
+            self.mote_types[i].save_firmware_as(new_path)
 
-        print("Saving simulation as Cooja file (.csc)")
+        logger.info("Saving simulation as Cooja file (.csc)")
         CSCParser.export_simulation(sim, f"{folder}/simulation.csc", gui_enabled=gui_enabled)
 
 
     @staticmethod
-    def from_csc(file_path, timeout=60):
+    def from_csc(csc_path):
         """
-        Simple .csc file parser.
+        Parse a Cooja simulation configuration (.csc) file
         """
-        folder = "/".join(file_path.split('/')[:-1])
-        mote_types = []
-        motes = []
-
-        tree = etree.parse(file_path)
-
-        # Parsing general simulation and radio settings
+        
+        tree = etree.parse(csc_path)
         simulation_tag=tree.xpath("/simconf/simulation")[0]
-        title = str(simulation_tag.xpath("title/text()")[0])
-        seed = str(simulation_tag.xpath("randomseed/text()")[0])
 
-        # Creating topology
-        topology = Topology.from_csc(file_path)
+        # Details
+        title = simulation_tag.xpath("title/text()")
+        random_seed = int(simulation_tag.xpath("randomseed/text()")[0])
+        motedelay_us = simulation_tag.xpath("motedelay_us/text()")
 
-        # Creating simulation
-        simulation = CoojaSimulation(topology=topology, seed=seed,title=title,\
-                        timeout=timeout)
+        topology = Topology.from_xml(tree, csc_path)
+        
+        plugin_tags=tree.xpath("/simconf/plugin")
+
+        script = None
+        for plugin_tag in plugin_tags:
+            name = plugin_tag.xpath("text()")[0].strip()
+            if name == "org.contikios.cooja.plugins.ScriptRunner":
+                res = plugin_tag.xpath("plugin_config/script/text()")
+                if len(res) > 0:
+                    script_content = plugin_tag.xpath("plugin_config/script/text()")[0]
+                    script = LoadScript(None, script=script_content)
+                else:
+                    script_file = plugin_tag.xpath("plugin_config/scriptfile/text()")[0]
+                    parts = csc_path.split('/')
+                    folder = "/".join(parts[:-1])
+                    script_file = script_file.replace('[CONFIG_DIR]', folder)
+                    script = LoadScript(None, script_file=script_file)
+                break
+        simulation = CoojaSimulation(topology=topology, seed=random_seed)
+        if script != None:
+            simulation.set_script(script)
+
         return simulation
 
     def __repr__(self):
@@ -358,11 +393,11 @@ class CoojaSimulationWorker:
 
             self.id_to_args[id(simulation)] = run_args
 
-    def run(self, verbose=True):
+    def run(self):
 
         # Check settings and compile firmware before threads start
         for simulation in self.simulations:
-            simulation.check_settings(verbose=verbose)
+            simulation.check_settings()
 
         self.simulations.sort(key=lambda x : int(10.**6*len(x.topology)/x.timeout))
 
@@ -380,7 +415,7 @@ class CoojaSimulationWorker:
         def target(thread_number):
             for simulation in simulations_per_thread[thread_number]:
                 kwargs=self.id_to_args[id(simulation)]
-                simulation.run(verbose=False, **kwargs)
+                simulation.run(**kwargs)
                 if self.callback != None:
                     self.callback(simulation)
 

@@ -279,4 +279,4 @@ class DGRM(RadioMedium):
       return DGRM.DGRMEdge(source_id, dest_id, ratio, signal, \
                 lqi, delay, channel)
 
-RadioMedium.Types.append(DGRM)
+RadioMedium.REGISTERED_MEDIUMS.append(DGRM)

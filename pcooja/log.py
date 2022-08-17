@@ -79,8 +79,11 @@ class Log:
 
 
     def get_messages(self, contain=None, log_level=None, log_module=None, node_id=None):
-        messages = self.dico.get(node_id, self.messages)
-        result = messages
+        result = self.messages
+        if type(node_id) == int:
+            result = self.dico.get(node_id, result)
+        elif type(node_id) == list:
+            result = filter(lambda message: message[Log.NODE_ID] in node_id, result) 
         if log_level != None:
             result = filter(lambda message: message[Log.LOG_LEVEL] != None and message[Log.LOG_LEVEL] <= log_level, result) 
         if log_module != None:

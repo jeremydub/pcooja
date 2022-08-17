@@ -29,7 +29,7 @@ class SkyMote(Mote):
 
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        if mote_type.java_class != self._get_java_class():
+        if mote_type._get_java_class() != SkyMoteType._get_java_class():
             return None
         interface_config_tags = xml.xpath("interface_config")
         mote_id, startup_delay = (None, None)
@@ -71,7 +71,8 @@ class SkyMoteType(MoteType):
     def _get_java_class():
         return 'org.contikios.cooja.mspmote.SkyMoteType' 
 
-    def compile_firmware(self, clean=False, verbose=False):
-        return MoteType.compile_firmware(self, clean=clean, verbose=verbose)
+    def compile_firmware(self, clean=False):
+        return MoteType.compile_firmware(self, clean=clean)
 
-Mote.platforms.append(SkyMote)
+Mote.REGISTERED_PLATFORMS.append(SkyMote)
+MoteType.REGISTERED_PLATFORMS.append(SkyMoteType)

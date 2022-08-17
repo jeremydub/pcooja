@@ -9,6 +9,9 @@ from .radio.medium import *
 from .radio.udgm.medium import *
 from .radio.dgrm.medium import *
 
+import logging
+logger = logging.getLogger("pcooja")
+
 class Topology:
     def __init__(self, motes, radiomedium=None):
         self.motes=motes
@@ -106,62 +109,35 @@ class Topology:
         Parse a topology in .csc file
         """
         
-        folder = "/".join(file_path.split('/')[:-1])
-        if len(folder) == 0 or folder[0] != "/":
-            folder = os.path.abspath(folder)
-        
-        available_mote_types = {}
-        motes = []
-
         tree = etree.parse(file_path)
+        return Topology.from_xml(tree, file_path)
 
+    @staticmethod
+    def from_xml(xml, file_path=None):
         # Parsing general simulation and radio settings
-        simulation_tag=tree.xpath("/simconf/simulation")[0]
+        simulation_tag=xml.xpath("/simconf/simulation")[0]
 
         radiomedium_tag = simulation_tag.find("radiomedium")
         radiomedium = RadioMedium.from_xml(radiomedium_tag)
 
-        platforms = {
-            "org.contikios.cooja.mspmote.SkyMoteType":"sky",
-            "org.contikios.cooja.mspmote.Z1MoteType":"z1",
-            "org.contikios.cooja.contikimote.ContikiMoteType":"cooja",
-        }
+        if file_path != None: 
+            folder = "/".join(file_path.split('/')[:-1])
+            if len(folder) == 0 or folder[0] != "/":
+                folder = os.path.abspath(folder)
+        else:
+            folder = None
 
         # Parsing Mote types 
+        available_mote_types = {}
         motetype_tags = simulation_tag.xpath("motetype")
         for motetype_tag in motetype_tags:
-            mote_interfaces = motetype_tag.xpath("moteinterface/text()")
-            identifier = motetype_tag.xpath("identifier/text()")
-            description = motetype_tag.xpath("description/text()")
-            firmware_path = motetype_tag.xpath("firmware/text()")
-            source_path = motetype_tag.xpath("source/text()")
-            commands = motetype_tag.xpath("commands/text()")
-            java_class = str(motetype_tag.text).strip()
-
-            firmware_command = str(commands[0]) if len(commands) > 0 else None
-
-            mote_interfaces = list(map(lambda x: str(x), mote_interfaces))
-
-            if len(firmware_path) == 0:
-                firmware_path = ".".join(source_path[0].split(".")[:-1])+"."+platforms[java_class]
-            else:
-                firmware_path = firmware_path[0]
-                
-
-            if [] not in (identifier, description, java_class):
-                firmware_path = firmware_path.replace('[CONFIG_DIR]', folder)\
-                                                .replace('[CONTIKI_DIR]', os.environ["CONTIKI_PATH"])
-
-                mote_type = MoteType(identifier=str(identifier[0]), java_class=java_class,\
-                            firmware_path=firmware_path, platform_target=platforms[java_class], interfaces=mote_interfaces,\
-                            description=str(description[0]), firmware_command=firmware_command)
-                available_mote_types[identifier[0]] = mote_type
-            else:
-                raise Exception("Bad Format for motetype tag")
+            mote_type = MoteType.from_xml(motetype_tag, folder)
+            available_mote_types[mote_type.identifier] = mote_type
 
         # Parsing motes
         mote_tags = simulation_tag.xpath("mote")
 
+        motes = []
         for mote_tag in mote_tags:
             interface_config_tags = mote_tag.xpath("interface_config")
             x, y = (None,None)

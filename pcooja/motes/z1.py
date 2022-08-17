@@ -26,7 +26,7 @@ class Z1Mote(Mote):
 
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        if mote_type.java_class != self._get_java_class():
+        if mote_type._get_java_class() != Z1MoteType._get_java_class():
             return None
         interface_config_tags = xml.xpath("interface_config")
         mote_id, startup_delay = (None, None)
@@ -66,7 +66,8 @@ class Z1MoteType(MoteType):
     def _get_java_class():
         return 'org.contikios.cooja.mspmote.Z1MoteType' 
 
-    def compile_firmware(self, clean=False, verbose=False):
-        return MoteType.compile_firmware(self, clean=clean, verbose=verbose)    
+    def compile_firmware(self, clean=False):
+        return MoteType.compile_firmware(self, clean=clean)
 
-Mote.platforms.append(Z1Mote)
+Mote.REGISTERED_PLATFORMS.append(Z1Mote)
+MoteType.REGISTERED_PLATFORMS.append(Z1MoteType)

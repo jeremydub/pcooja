@@ -1,8 +1,9 @@
 import os.path
-from ..runner import ScriptRunner
+from .runner import ScriptRunner
+import html
 
 class LoadScript(ScriptRunner):
-  def __init__(self, timeout, with_gui=False, script_file=None):
+  def __init__(self, timeout, with_gui=False, script=None, script_file=None):
     """
       Define a script for cooja included in a file.
       The timeout value will be add by python at the start of the file.
@@ -10,10 +11,14 @@ class LoadScript(ScriptRunner):
       loaded in the simulation.
     """
     super().__init__(timeout, with_gui)
-    self.script_file = script_file
 
-    if not os.path.exists(script_file):
-      raise Exception("Script file doesn't exists.")
+
+    if script_file != None:
+        if not os.path.exists(script_file):
+            raise Exception(f"Script file '{script_file}' does not exist.")
+        with open(script_file, 'r') as f:
+            script = f.read()
+    self.script = html.escape(script)
 
   def to_xml(self, xb, gui_enabled):
     """
@@ -30,12 +35,10 @@ class LoadScript(ScriptRunner):
       xb.indent()
 
       #We add the timeout value
-      xb.write("TIMEOUT("+str(1000*self.timeout)+");")
+      if self.timeout != None:
+          xb.write("TIMEOUT("+str(1000*self.timeout)+");")
       
-      #We have already check if the file exist.
-      script_file = open(self.script_file, 'r')
-      for line in script_file:
-        xb.write(line)
+      xb.write(self.script)
 
       xb.unindent()
       xb.write("</script>")

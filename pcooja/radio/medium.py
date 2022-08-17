@@ -2,7 +2,7 @@ from enum import Enum
 
 class RadioMedium:
   """Abstract class of a radio medium"""
-  Types = []
+  REGISTERED_MEDIUMS = []
 
   def is_in_range(self, mote1, mote2):
     """ Return if the mote 2 can receive message from the mote 1."""
@@ -23,7 +23,7 @@ class RadioMedium:
   @staticmethod
   def from_xml(xml):
     """ Return a Radio Medium object from the XML."""
-    for t in RadioMedium.Types:
+    for t in RadioMedium.REGISTERED_MEDIUMS:
         radio_medium = t.from_xml(xml)
         if radio_medium != None:
             return radio_medium

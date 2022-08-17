@@ -2,6 +2,9 @@ from pcooja.motes.mote import Mote, MoteType
 import os
 import shutil
 
+import logging
+logger = logging.getLogger("pcooja")
+
 class CoojaMote(Mote):
     """ The biterate is in kbps """
     def __init__(self, id, x, y, mote_type=None, startup_delay=None, bitrate=250.0):
@@ -38,7 +41,7 @@ class CoojaMote(Mote):
         
     @staticmethod
     def from_xml(xml, x, y, mote_type):
-        if mote_type.java_class != self._get_java_class():
+        if mote_type._get_java_class() != CoojaMoteType._get_java_class():
             return None
         interface_config_tags = xml.xpath("interface_config")
         mote_id, startup_delay = (None, None)
@@ -67,13 +70,28 @@ class CoojaMoteType(MoteType):
         }
         super().__init__(firmware_path, **kwargs)
             
+        self.map_file = ".".join(self.firmware_path.split(".")[:-1]+["map"])
+
+        if not self.is_compilable():
+            if self.map_file == None or not os.path.exists(self.map_file):
+                raise Exception("Cooja MoteType firmware is missing an associated MAP file")
+        if self.firmware_exists():
+            self.environment_variables["CLASSNAME"] = self._extract_classname_in_map_file()
+        else:
+            self.environment_variables["CLASSNAME"] = f"Lib{self.unique_id}"
         libname = f"mtype{self.unique_id}"
         self.environment_variables["CONTIKI_APP"] = self.make_target
         self.environment_variables["LIBNAME"] = f"build/cooja/{libname}.cooja"
         self.environment_variables["COOJA_VERSION"] = "2022052601"
-        self.environment_variables["CLASSNAME"] = f"Lib{self.unique_id}"
-        
-        self.map_file = ".".join(self.firmware_path.split(".")[:-1]+["map"])
+    
+    def _extract_classname_in_map_file(self):
+        with open(self.map_file, "r") as f:
+            for line in f:
+                if "Java_org_contikios_cooja_corecomm_" in line:
+                    classname = line.split("_")[-2]
+                    break
+        return classname
+
     
     def to_xml(self, xb):
         super().to_xml(xb)
@@ -85,8 +103,8 @@ class CoojaMoteType(MoteType):
         xb.unindent()
         xb.write('</motetype>')
 
-    def compile_firmware(self, clean=False, verbose=False):
-        success = MoteType.compile_firmware(self, clean=clean, verbose=verbose)    
+    def compile_firmware(self, clean=False):
+        success = MoteType.compile_firmware(self, clean=clean)    
         parts = self.firmware_path.split('/')
         folder = "/".join(parts[:-1])
         built_map_file = f"{folder}/{self.environment_variables['LIBNAME'][:-6]}.map"
@@ -94,13 +112,18 @@ class CoojaMoteType(MoteType):
             shutil.copy2(built_map_file, self.map_file)
         return success
 
-    
-    def save_firmware_as(self, filepath, verbose=False):
-        super().save_firmware_as(filepath, verbose=verbose)
+    def firmware_exists(self):
+        return super().firmware_exists() and \
+               self.map_file != None and \
+               os.path.exists(self.map_file) 
+ 
+    def save_firmware_as(self, filepath):
+        super().save_firmware_as(filepath)
         dest_map_file = ".".join(filepath.split(".")[:-1]+["map"])
         map_filename = dest_map_file.split("/")[-1]
         if os.path.exists(filepath) and os.path.exists(self.map_file):
             shutil.copy2(self.map_file, dest_map_file)
+            logger.debug(f"Saved associated MAP file to file '{dest_map_file}'")
             #self.map_file=f"[CONFIG_DIR]/{map_filename}"
     
     def remove_firmware(self):
@@ -138,4 +161,5 @@ class CoojaMoteType(MoteType):
     def _get_java_class():
         return 'org.contikios.cooja.contikimote.ContikiMoteType' 
 
-Mote.platforms.append(CoojaMote)
+Mote.REGISTERED_PLATFORMS.append(CoojaMote)
+MoteType.REGISTERED_PLATFORMS.append(CoojaMoteType)

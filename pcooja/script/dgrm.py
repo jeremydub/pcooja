@@ -1,4 +1,4 @@
-from ..runner import ScriptRunner
+from .runner import ScriptRunner
 
 class DGRMScript(ScriptRunner):
   """ Load the default script add some the powertracker trace at the end

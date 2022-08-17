@@ -71,4 +71,4 @@ class UDGM(RadioMedium):
     return UDGM(transmitting_range, interference_range, \
             success_ratio_tx, success_ratio_rx)
 
-RadioMedium.Types.append(UDGM)
+RadioMedium.REGISTERED_MEDIUMS.append(UDGM)
