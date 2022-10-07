@@ -189,7 +189,6 @@ class MoteType(ABC):
         xb.write(self._get_java_class())
         xb.write(f'<identifier>{self.identifier}</identifier>')
         xb.write(f'<description>{self.description}</description>')
-        xb.write(f'<symbols>false</symbols>')
         xb.write(f'<firmware EXPORT="copy">{self.firmware_path}</firmware>')
         for interface in self.interfaces:
             xb.write(f'<moteinterface>{interface}</moteinterface>')
@@ -255,6 +254,7 @@ class MoteType(ABC):
         target_arg = f"TARGET={self._get_platform_target()}"
         
         if not self.is_compilable():
+            logger.error(f"Not compilable: firmware was given as path for Mote Type {repr(self)}")
             return True
 
         logger.info(f"Compiling Firmware for Mote Type {repr(self)}")
@@ -272,6 +272,9 @@ class MoteType(ABC):
         if self.firmware_exists() and self.compile_command == None:
             logger.debug(f"Firmware already exists for Mote Type {repr(self)}")
             return True
+        
+        if self.firmware_exists():
+            self.remove_firmware()
         
         self.check_makefile()
 
@@ -293,7 +296,7 @@ class MoteType(ABC):
         if self.compile_command != None:
             for subcommand in self.compile_command.split("\n"):
                 command += f"&& {env} {subcommand}"
-                logger.debug(f"  (shell, from <command/>) {subcommand}")
+                logger.debug(f"  (shell, from <command> tag) {subcommand}")
             command = command.replace("$(CPUS)", "4")
         else:
             subcommand = f"make {self.make_target} -j8 {target_arg}"
@@ -322,10 +325,10 @@ class MoteType(ABC):
             raise CompilationError("An error occured during firmware compilation")
 
         expected_firmware_location = os.path.abspath(f"{folder}/{self.get_expected_filename()}")
-        if expected_firmware_location != self.firmware_path:
+        if expected_firmware_location != self.firmware_path and os.path.exists(expected_firmware_location):
             logger.debug(f"Moving new firmware '{expected_firmware_location}' to '{self.firmware_path}'")
             os.rename(expected_firmware_location, self.firmware_path)
-        os.remove(f"{folder}/{error_file}")
+        #os.remove(f"{folder}/{error_file}")
         return True
 
     def get_expected_filename(self):

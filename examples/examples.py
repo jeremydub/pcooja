@@ -1,72 +1,77 @@
 from pcooja import *
-from pcooja.pcap import *
 import random
 import os
+import datetime
+import glob
 #from custommotes import *
 
-CoojaSimulation.set_contiki_path("/home/user/contiki")
+CoojaSimulation.set_contiki_path("/home/user/contiki-ng")
 
-folder = CoojaSimulation.get_contiki_path()+"/examples/ipv6"
+folder = CoojaSimulation.get_contiki_path()+"/examples"
+
+import logging
+logger.setLevel(logging.INFO)
 
 def simulation_example1():
-    """
-    load a simulation from a .csc file
-    """
-    filepath=folder+"/rpl-udp/rpl-udp.csc"
+    csc_filepath=f"{folder}/rpl-udp/rpl-udp-cooja.csc"
 
     # Create a simulation object from an existing .csc file.
-    simulation = CoojaSimulation.from_csc(filepath)
+    simulation = CoojaSimulation.from_csc(csc_filepath)
     simulation.timeout = 10
     # Edit some settings (optional)
     simulation.success_ratio_rx = 1.0
 
     # Run the simulation and store the log and radio data in files
-    simulation.run(verbose=True)
+    simulation.run()
 
 def simulation_example2():
     # Defining cooja mote types and firmware
-    server = Z1MoteType(folder+"/rpl-udp/udp-server.z1")
-    client = Z1MoteType(folder+"/rpl-udp/udp-client.z1")
+    server = Z1MoteType(f"{folder}/rpl-udp/udp-server.c")
+    client = Z1MoteType(f"{folder}/rpl-udp/udp-client.c")
 
-    # Use a predefined topology that contains 2 types of mote (server,client)
+    # Use a predefined topology that creates 1 server mote and 24 client motes
     topology = Topology.get_tree25_topology(Z1Mote, server, client)
 
     # Create a simulation with default RX/TX success ratio, seed and timeout values
     simulation = CoojaSimulation(topology, timeout=30)
 
     # Run the simulation and store the log and radio data in specific files
-    simulation.run_with_gui(verbose=True)
+    simulation.run_with_gui()
 
 def simulation_example3():
-    csc_filepath=folder+"/simple-udp-rpl/unicast-example.csc"
+    csc_filepath=f"{folder}/rpl-udp/rpl-udp-sky.csc"
 
     # Defining cooja mote types and firmware
-    server = SkyMoteType(folder+"/rpl-udp/udp-server.sky")
-    client = SkyMoteType(folder+"/rpl-udp/udp-client.sky")
+    server = SkyMoteType(f"{folder}/rpl-udp/udp-server.c")
+    client = SkyMoteType(f"{folder}/rpl-udp/udp-client.c")
 
     # Use topology found in .csc file, mote types are not preserved
     topology = Topology.from_csc(csc_filepath)
 
     # Set mote types
     topology.set_mote_type(1,server)
-    topology.set_mote_type([2,3,4,5,6,7,8,9,10,11], client)
+    topology.set_mote_type([2,3,4,5,6,7,8], client)
 
     # Create a simulation with default RX/TX success ratio, seed and timeout values
     simulation = CoojaSimulation(topology, timeout=120)
-
+    
     # Just for information, it is possible to compile a firmware
     # Compile Server firmware, if it does not exist
     server.compile_firmware()
-    # Compile (and override) Client firmware
-    client.compile_firmware(clean=True, verbose=True)
 
-    # Run the simulation and store the log and radio data in files
-    simulation.run(verbose=True)
+
+    logger.setLevel(logging.DEBUG)
+
+    # Compile (and override) Client firmware
+    client.compile_firmware(clean=True)
+
+    # Run the simulation and store the log in specific file
+    simulation.run(log_file="output.log")
 
 def simulation_example4():
     # Defining cooja mote types and firmware
-    server = SkyMoteType(folder+"/rpl-udp/udp-server.sky")
-    client = SkyMoteType(folder+"/rpl-udp/udp-client.sky")
+    server = SkyMoteType(f"{folder}/rpl-udp/udp-server.c")
+    client = SkyMoteType(f"{folder}/rpl-udp/udp-client.c")
 
     # Create a random topology
     n = 10
@@ -94,20 +99,91 @@ def simulation_example4():
     # Create a simulation
     simulation = CoojaSimulation(topology, seed=15468, timeout=100)
 
-    # Run the simulation and store the log and radio data in specific files
-    simulation.run(filename_prefix="simulation_", verbose=True)
+    # Run the simulation
+    simulation.run_with_gui()
 
-def simulation_example6():
+def simulation_example5():
     """
-    Running a simulation in Cooja with GUI.
+    Export simulation.
     """
-    csc_filepath=folder+"/rpl-udp/rpl-udp.csc"
+    csc_filepath=f"{folder}/rpl-udp/rpl-udp-sky.csc"
 
     # Create a simulation object from an existing .csc file.
     simulation = CoojaSimulation.from_csc(csc_filepath)
 
     # Run simulation in Cooja with GUI.
     simulation.export()
+
+def simulation_example6():
+    # Defining/overriding project configuration in 'project-conf.h'
+    project_conf = ProjectConf(RPL_CONF_MAX_INSTANCES=1,
+                                NBR_TABLE_CONF_MAX_NEIGHBORS=8,
+                                IEEE802154_CONF_PANID=0x42,
+                                LOG_CONF_LEVEL_IPV6="LOG_LEVEL_DBG")
+    
+    makefile_variables = {"MAKE_ROUTING":"MAKE_ROUTING_RPL_LITE", 
+                          "MAKE_MAC":"MAKE_MAC_CSMA"}
+
+    # Firmwares
+    server = Z1MoteType(f"{folder}/rpl-udp/udp-server.c", 
+                           project_conf=project_conf, 
+                           makefile_variables=makefile_variables)
+    client = Z1MoteType(f"{folder}/rpl-udp/udp-client.c", 
+                           project_conf=project_conf, 
+                           makefile_variables=makefile_variables)
+
+    # Use a predefined topology that creates 1 server mote and 24 client motes
+    topology = Topology.get_tree25_topology(Z1Mote, server, client)
+
+    # Create a simulation with default RX/TX success ratio, seed and timeout values
+    simulation = CoojaSimulation(topology, timeout=30)
+
+    # Run the simulation and store the log and radio data in specific files
+    simulation.run_with_gui()
+
+def simulation_example7():
+    # Defining/overriding project configuration in 'project-conf.h'
+    project_conf = ProjectConf(RPL_CONF_MAX_INSTANCES=1,
+                                NBR_TABLE_CONF_MAX_NEIGHBORS=8,
+                                IEEE802154_CONF_PANID=0x42,
+                                LOG_CONF_LEVEL_RPL="LOG_LEVEL_DBG")
+
+    # Firmwares
+    server = CoojaMoteType(f"{folder}/rpl-udp/udp-server.c", 
+                           project_conf=project_conf) 
+    client = CoojaMoteType(f"{folder}/rpl-udp/udp-client.c", 
+                           project_conf=project_conf)
+
+    topology = Topology.get_tree25_topology(CoojaMote, server, client)
+    simulation = CoojaSimulation(topology, timeout=100)
+
+    simulation.run()
+
+    
+    log = Log(simulation.get_log_filepath())
+    messages = log.get_messages()
+
+    send_requests = log.get_messages(contain="Sending request")
+    received_requests = log.get_messages(contain="Received request")
+    send_responses = log.get_messages(contain="Sending response")
+    received_responses = log.get_messages(contain="Received response")
+
+    print(f"requests sent: {len(send_requests)}")
+    print(f"requests received: {len(received_requests)}")
+    print(f"responses sent: {len(send_responses)}")
+    print(f"responses received: {len(received_responses)}")
+    
+    print("")
+
+    app_log = log.get_messages(log_module="App", node_id=4)
+    for message in app_log[:5]:
+        Log.print_message(message)
+    
+    print("")
+
+    errors_log = log.get_messages(log_level=Log.LEVEL_ERR, node_id=5)
+    for message in errors_log:
+        Log.print_message(message)
 
 def simulation_example8():
     """
@@ -151,24 +227,5 @@ def simulation_example9():
     # Run the simulation and store the log and radio data in files
     simulation.run_with_gui()
 
-def simulation_example10():
-    # Defining cooja mote types and firmware
-    server = CoojaMoteType(folder+"/hello-world/hello-world.cooja")
-
-    client.compile_firmware(clean=True, verbose=True)
-
-
-"""
-functions=[simulation_example6,\
-           simulation_example8,simulation_example9,\
-           pcap_example1,pcap_example2,pcap_example3]
-"""
-functions=[simulation_example10]
-
-for function in functions:
-    os.system("clear")
-    print("#"*80)
-    print("### Calling demo function : "+function.__name__)
-    print("#"*80)
-    function()
-    input("\n# Press ENTER to call next demo function")
+if __name__ == "__main__":
+    simulation_example7()

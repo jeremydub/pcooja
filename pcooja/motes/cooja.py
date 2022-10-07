@@ -65,7 +65,6 @@ class CoojaMoteType(MoteType):
                 'CC':'gcc',
                 'LD':'ld',
                 'OBJCOPY':'objcopy',
-                #'EXTRA_CC_ARGS':"-I'$JAVA_HOME/include' -I'$JAVA_HOME/include/linux' -fno-builtin-printf",
                 'AR':'ar',
         }
         super().__init__(firmware_path, **kwargs)
@@ -82,6 +81,7 @@ class CoojaMoteType(MoteType):
         libname = f"mtype{self.unique_id}"
         self.environment_variables["CONTIKI_APP"] = self.make_target
         self.environment_variables["LIBNAME"] = f"build/cooja/{libname}.cooja"
+        # TODO: retrieve version
         self.environment_variables["COOJA_VERSION"] = "2022052601"
     
     def _extract_classname_in_map_file(self):

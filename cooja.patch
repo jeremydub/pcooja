@@ -1,0 +1,202 @@
+diff --git a/java/org/contikios/cooja/Cooja.java b/java/org/contikios/cooja/Cooja.java
+index 10560145..d9c33244 100644
+--- a/java/org/contikios/cooja/Cooja.java
++++ b/java/org/contikios/cooja/Cooja.java
+@@ -1855,7 +1855,9 @@ public class Cooja extends Observable {
+           return false;
+         }
+ 
+-        myDesktopPane.add(pluginFrame);
++        if(myDesktopPane != null){
++          myDesktopPane.add(pluginFrame);
++        }
+ 
+         /* Set size if not already specified by plugin */
+         if (pluginFrame.getWidth() <= 0 || pluginFrame.getHeight() <= 0) {
+@@ -1882,7 +1884,9 @@ public class Cooja extends Observable {
+           }
+           pluginFrame.setSelected(true);
+         } catch (Exception e) { }
+-        myDesktopPane.moveToFront(pluginFrame);
++        if(myDesktopPane != null){
++          myDesktopPane.moveToFront(pluginFrame);
++        }
+ 
+         return true;
+       }
+@@ -1966,7 +1970,7 @@ public class Cooja extends Observable {
+         Throwable cause = ex;
+         do {
+           if (cause instanceof PluginRequiresVisualizationException) {
+-            logger.debug("Visualized plugin was not started: " + pluginClass);
++            logger.warn("Visualized plugin was not started: " + pluginClass);
+             return null;
+           }
+         } while ((cause = cause.getCause()) != null);
+@@ -2009,7 +2013,7 @@ public class Cooja extends Observable {
+ 
+     try {
+       if (!isVisualized() && VisPlugin.class.isAssignableFrom(pluginClass)) {
+-        throw new PluginRequiresVisualizationException();
++        //throw new PluginRequiresVisualizationException();
+       }
+ 
+       if (pluginType == PluginType.MOTE_PLUGIN) {
+@@ -3480,7 +3484,7 @@ public class Cooja extends Observable {
+       }
+       // Skip plugins that require visualization in headless mode.
+       if (!isVisualized() && VisPlugin.class.isAssignableFrom(pluginClass)) {
+-        continue;
++        //continue;
+       }
+ 
+       // Parse plugin mote argument (if any)
+diff --git a/java/org/contikios/cooja/contikimote/ContikiMoteType.java b/java/org/contikios/cooja/contikimote/ContikiMoteType.java
+index 07e2cb9e..81bfa5ab 100644
+--- a/java/org/contikios/cooja/contikimote/ContikiMoteType.java
++++ b/java/org/contikios/cooja/contikimote/ContikiMoteType.java
+@@ -173,7 +173,8 @@ public class ContikiMoteType extends BaseContikiMoteType {
+     }
+   }
+ 
+-  private final String javaClassName; // Loading Java class name: Lib1.java.
++  private String javaClassName; // Loading Java class name: Lib1.java.
++  private File mapFile = null; /* Contiki map: build/cooja/mtype1.map */
+ 
+   private NetworkStack netStack = NetworkStack.DEFAULT;
+ 
+@@ -294,7 +295,7 @@ public class ContikiMoteType extends BaseContikiMoteType {
+       if (!showCompilationDialog(simulation)) {
+         return false;
+       }
+-    } else {
++    } else if(!getContikiFirmwareFile().exists() && getContikiSourceFile().exists()){
+       if (!compileMoteType(visAvailable, BaseContikiMoteType.oneDimensionalEnv(getCompilationEnvironment()))) {
+         return false;
+       }
+@@ -346,7 +347,6 @@ public class ContikiMoteType extends BaseContikiMoteType {
+               Cooja.getExternalToolsSetting("COMMAND_VAR_SEC_COMMON"));
+     } else {
+       // Parse map file (build/cooja/mtype1.map).
+-      var mapFile = getMoteFile(".map");
+       if (!mapFile.exists()) {
+         throw new MoteTypeCreationException("Map file " + mapFile + " could not be found");
+       }
+@@ -957,6 +957,22 @@ public class ContikiMoteType extends BaseContikiMoteType {
+       config.add(element);
+     }
+ 
++    if (getContikiSourceFile() == null) {
++      element = new Element("firmware");
++      file = simulation.getCooja().createPortablePath(getContikiFirmwareFile());
++      element.setText(file.getPath().replaceAll("\\\\", "/"));
++      element.setText(file.getPath().replaceAll("\\\\", "/"));
++      config.add(element);
++      element = new Element("mapfile");
++      var mapFile = getMoteFile(".map");
++      file = simulation.getCooja().createPortablePath(mapFile);
++      element.setText(file.getPath().replaceAll("\\\\", "/"));
++      config.add(element);
++      element = new Element("javaclassname");
++      element.setText(javaClassName);
++      config.add(element);
++    }
++
+     return config;
+   }
+ 
+@@ -973,10 +989,30 @@ public class ContikiMoteType extends BaseContikiMoteType {
+         case "description":
+           description = element.getText();
+           break;
++        case "javaclassname":
++          javaClassName = element.getText();
++          break;
++        case "firmware":
++          File firmware = new File(element.getText());
++          if (!firmware.exists()) {
++            firmware = simulation.getCooja().restorePortablePath(firmware);
++          }
++          setContikiFirmwareFile(firmware);
++          mapFile = new File(
++                firmware.getParentFile(),
++                getIdentifier() + ".map");
++          break;
++        case "mapfile":
++          mapFile = new File(element.getText());
++          if (!mapFile.exists()) {
++            mapFile = simulation.getCooja().restorePortablePath(mapFile);
++          }
++          break;
+         case "contikiapp":
+         case "source":
+           fileSource = simulation.getCooja().restorePortablePath(new File(element.getText()));
+           fileFirmware = getMoteFile(librarySuffix);
++          mapFile = getMoteFile(".map");
+           break;
+         case "commands":
+           compileCommands = element.getText();
+@@ -1019,7 +1055,8 @@ public class ContikiMoteType extends BaseContikiMoteType {
+           break;
+       }
+     }
+-    if (!visAvailable || simulation.isQuickSetup()) {
++    if ((!visAvailable || simulation.isQuickSetup()) && !getContikiFirmwareFile().exists() && getContikiSourceFile().exists()) {
++
+       if (getIdentifier() == null) {
+         throw new MoteTypeCreationException("No identifier specified");
+       }
+diff --git a/java/org/contikios/cooja/mote/BaseContikiMoteType.java b/java/org/contikios/cooja/mote/BaseContikiMoteType.java
+index 74517acc..eca9b9a0 100644
+--- a/java/org/contikios/cooja/mote/BaseContikiMoteType.java
++++ b/java/org/contikios/cooja/mote/BaseContikiMoteType.java
+@@ -144,6 +144,7 @@ public abstract class BaseContikiMoteType implements MoteType {
+   }
+ 
+   public File getExpectedFirmwareFile(File source) {
++        logger.error("llllllllllllllllllllllllllllllllllllllllllll");
+     File parentDir = source.getParentFile();
+     String sourceNoExtension = source.getName();
+     if (sourceNoExtension.endsWith(".c")) {
+diff --git a/java/org/contikios/cooja/plugins/RadioLogger.java b/java/org/contikios/cooja/plugins/RadioLogger.java
+index f95b96a5..9dca6973 100644
+--- a/java/org/contikios/cooja/plugins/RadioLogger.java
++++ b/java/org/contikios/cooja/plugins/RadioLogger.java
+@@ -342,7 +342,8 @@ public class RadioLogger extends VisPlugin {
+         formatTimeString = !formatTimeString;
+         dataTable.getColumnModel().getColumn(COLUMN_TIME).setHeaderValue(
+                 dataTable.getModel().getColumnName(COLUMN_TIME));
+-        repaint();
++        if(simulation.getCooja().isVisualized())
++          repaint();
+       }
+     });
+ 
+@@ -482,13 +483,15 @@ public class RadioLogger extends VisPlugin {
+           if (aliases.isEmpty()) {
+             aliases = null;
+           }
+-          repaint();
++          if(simulation.getCooja().isVisualized())
++            repaint();
+           return;
+         }
+ 
+         // (Re)define alias
+         aliases.put(connections.get(selectedRow).data, alias);
+-        repaint();
++        if(simulation.getCooja().isVisualized())
++          repaint();
+       }
+     };
+     payloadMenu.add(new JMenuItem(aliasAction));
+@@ -1051,7 +1054,8 @@ public class RadioLogger extends VisPlugin {
+     verboseBox.setText("");
+ 
+     setTitle("Radio messages: showing " + dataTable.getRowCount() + "/" + connections.size() + " packets");
+-    simulation.getCooja().getDesktopPane().repaint();
++    if(simulation.getCooja().isVisualized())
++      simulation.getCooja().getDesktopPane().repaint();
+   }
+ 
+   private Action createAnalyzerAction(String name, final String actionName,

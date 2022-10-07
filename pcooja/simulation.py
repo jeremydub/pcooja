@@ -61,7 +61,7 @@ class CoojaSimulation:
             misc_path = os.path.abspath(f"{__file__}/../misc")
             #os.system(f'CONTIKI_PATH="{path}" MODULE_PATH="{misc_path}" sh {misc_path}/fix_cooja.sh')
         else:
-            raise SettingsError("Contiki Not Found")
+            raise SettingsError(f"Path '{path}' does not exist or is not a valid Contiki folder")
 
     @staticmethod
     def get_contiki_path():
@@ -94,12 +94,7 @@ class CoojaSimulation:
 
             contiki_path = self.get_contiki_path()
 
-            jar_location = f"{contiki_path}/tools/cooja/dist/"
-
-            # -Xshare:on is add for the CoojaMote support 
-            # https://github.com/contiki-os/contiki/issues/2324
-            command=f"cd {temp_dir} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -Djava.awt.headless=true -mx512m -jar {jar_location}cooja.jar -nogui={absolute_path}  -contiki={contiki_path}"
-            command=f"ant -e -logger org.apache.tools.ant.listener.SimpleBigProjectLogger -f {contiki_path}/tools/cooja/build.xml run_bigmem -Dargs='-nogui={absolute_path} -contiki={contiki_path} -logdir={temp_dir}'"
+            command=f"cooja --args='-nogui=\"{absolute_path}\" -contiki=\"{contiki_path}\" -logdir=\"{temp_dir}\"'"
 
             origin_pcap_file = None
             test_failed = False
@@ -118,23 +113,25 @@ class CoojaSimulation:
                         break
                     else:
                         line = line.decode().strip()
-                        if "%, done in " in line:
-                            parts = line.split(", done in ")
-                            time_remaining = " | "+ parts[1]
+                        if "% completed, " in line:
+                            parts = line.split("completed, ")
+                            time_remaining = " | "+ parts[1].split()[0]+" sec"
                             progress = parts[0].split()[-1]
-                        elif "Test script finished" in line:
+                        elif "Simulated time" in line:
                             progress = "100%"
                             time_remaining = ""
-                        elif "Test script activated" in line:
+                            logger.info(f"{self.title}   [{progress}{time_remaining}]             \r")
+                            break
+                        elif "Script timeout in" in line:
                             progress = "0%"
                             time_remaining = ""
                         elif "Opened pcap file" in line:
-                            origin_pcap_file = f"{temp_dir}{line.split()[-1]}"
+                            origin_pcap_file = f"{contiki_path}/tools/cooja/{line.split()[-1]}"
                         elif "Segmentation fault" in line or "Java Result: 139" in line:
                             segfault = True
                         elif "TEST FAILED" in line:
                             test_failed = True
-                    logger.info(f"{self.title}   [{progress}{time_remaining}]\r")
+                    logger.info(f"{self.title}   [{progress}{time_remaining}]             \r")
                 p.stdout.close()
                 logger.info("")
             code=p.wait()
@@ -168,13 +165,15 @@ class CoojaSimulation:
                 if enable_pcap:
                     if pcap_file == None:
                         pcap_file = f"{prefix}{self.id}.pcap"
-                    if os.path.exists(origin_pcap_file):
+                    if origin_pcap_file != None and os.path.exists(origin_pcap_file):
                         self.pcap_file=pcap_file
                         pcap_file_folder = "/".join(pcap_file.split("/")[:-1])
                         if pcap_file_folder != '' and  not os.path.exists(pcap_file_folder):
                             os.makedirs(pcap_file_folder)
                         shutil.copy(origin_pcap_file,pcap_file)
                         logger.debug(f"Saved captured packets to {pcap_file}")
+                    elif origin_pcap_file == None:
+                        logger.warning(f"Pcap file was not provided by Cooja")
                     else:
                         logger.warning(f"Could not find {origin_pcap_file}")
             else:
@@ -214,8 +213,7 @@ class CoojaSimulation:
             absolute_path=os.path.abspath(f"{temp_folder}/simulation.csc")
 
             contiki_path = self.get_contiki_path()
-            jar_location = f"{contiki_path}/tools/cooja/dist/"
-            command=f"cd {temp_folder} && java -Xshare:on -Dnashorn.args=--no-deprecation-warning -mx512m -jar {jar_location}cooja.jar -quickstart={absolute_path} -contiki={contiki_path}"
+            command=f"cd {temp_folder} && cooja --args='-quickstart=\"{absolute_path}\" -contiki=\"{contiki_path}\"'"
             command +=" 2> /dev/null > /dev/null"
             os.system(command)
         except CompilationError as e:
@@ -334,12 +332,16 @@ class CoojaSimulation:
         Parse a Cooja simulation configuration (.csc) file
         """
         
+        if not os.path.exists(csc_path):
+            raise OSError(f"File '{csc_path}' does not exist")
         tree = etree.parse(csc_path)
         simulation_tag=tree.xpath("/simconf/simulation")[0]
 
         # Details
         title = simulation_tag.xpath("title/text()")
-        random_seed = int(simulation_tag.xpath("randomseed/text()")[0])
+        random_seed = simulation_tag.xpath("randomseed/text()")[0]
+        if random_seed != "generated":
+            random_seed = int(random_seed)
         motedelay_us = simulation_tag.xpath("motedelay_us/text()")
 
         topology = Topology.from_xml(tree, csc_path)
