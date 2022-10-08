@@ -120,7 +120,7 @@ class CoojaSimulation:
                         elif "Simulated time" in line:
                             progress = "100%"
                             time_remaining = ""
-                            logger.info(f"{self.title}   [{progress}{time_remaining}]             \r")
+                            logger.info(f"{self.title}   [{progress}{time_remaining}]                    \r")
                             break
                         elif "Script timeout in" in line:
                             progress = "0%"
@@ -131,7 +131,7 @@ class CoojaSimulation:
                             segfault = True
                         elif "TEST FAILED" in line:
                             test_failed = True
-                    logger.info(f"{self.title}   [{progress}{time_remaining}]             \r")
+                    logger.info(f"{self.title}   [{progress}{time_remaining}]                            \r")
                 p.stdout.close()
                 logger.info("")
             code=p.wait()

@@ -57,6 +57,9 @@ class ProjectConf:
     def __setitem__(self, key, value):
         self.dico[key] = value
 
+    def __getitem__(self, key):
+        return self.dico[key]
+
     def __str__(self):
         return str(self.dico)
     
