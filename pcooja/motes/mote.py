@@ -137,7 +137,7 @@ class MoteType(ABC):
         self.firmware_path=firmware_path
         self.source_path = source_path
         self.description = description
-        self.make_target = make_target #target file
+        self.make_target = make_target
         self.makefile_variables = makefile_variables
         self.compile_command = compile_command
         self.environment_variables = environment_variables
@@ -197,17 +197,16 @@ class MoteType(ABC):
 
     @staticmethod
     def from_xml(xml, configdir_path=None):
-        mote_interfaces = xml.xpath("moteinterface/text()")
         identifier = xml.xpath("identifier/text()")
         description = xml.xpath("description/text()")
-        firmware_path = xml.xpath("firmware/text()")
-        source_path = xml.xpath("source/text()")
-        commands = xml.xpath("commands/text()")
-        java_class = str(xml.text).strip()
 
+        commands = xml.xpath("commands/text()")
         compile_command = str(commands[0]) if len(commands) > 0 else None
+
+        source_path = xml.xpath("source/text()")
         source_path = str(source_path[0]) if len(source_path) > 0 else None
 
+        java_class = str(xml.text).strip()
         motetype_class = None
         for registered_platform in MoteType.REGISTERED_PLATFORMS:
             if registered_platform._get_java_class() == java_class:
@@ -219,13 +218,14 @@ class MoteType(ABC):
 
         platform_target = motetype_class._get_platform_target()
 
+        mote_interfaces = xml.xpath("moteinterface/text()")
         mote_interfaces = list(map(lambda x: str(x), mote_interfaces))
         
+        firmware_path = xml.xpath("firmware/text()")
         if firmware_path == []:
             firmware_path = ".".join(source_path.split(".")[:-1])+f".{platform_target}"
         else:
             firmware_path = firmware_path[0]
-            
 
         if identifier == [] or description == [] or java_class == []:
             raise Exception("Bad Format for motetype tag")
@@ -255,7 +255,7 @@ class MoteType(ABC):
         
         if not self.is_compilable():
             logger.error(f"Not compilable: firmware was given as path for Mote Type {repr(self)}")
-            return True
+            return False
 
         logger.info(f"Compiling Firmware for Mote Type {repr(self)}")
 
@@ -274,6 +274,7 @@ class MoteType(ABC):
             return True
         
         if self.firmware_exists():
+            logger.warn(f"Removing existing Firmware for Mote Type {repr(self)} before compilation")
             self.remove_firmware()
         
         self.check_makefile()
@@ -291,8 +292,6 @@ class MoteType(ABC):
         for key,value in self.makefile_variables.items():
             env += f"{key}=\"{value}\" "
         
-        if len(self.environment_variables) > 0:
-            logger.debug(f"Environment variables : {env}")
         if self.compile_command != None:
             for subcommand in self.compile_command.split("\n"):
                 command += f"&& {env} {subcommand}"
@@ -326,9 +325,8 @@ class MoteType(ABC):
 
         expected_firmware_location = os.path.abspath(f"{folder}/{self.get_expected_filename()}")
         if expected_firmware_location != self.firmware_path and os.path.exists(expected_firmware_location):
-            logger.debug(f"Moving new firmware '{expected_firmware_location}' to '{self.firmware_path}'")
+            #logger.debug(f"Moving generated firmware '{expected_firmware_location}' to '{self.firmware_path}'")
             os.rename(expected_firmware_location, self.firmware_path)
-        #os.remove(f"{folder}/{error_file}")
         return True
 
     def get_expected_filename(self):
@@ -362,7 +360,7 @@ class MoteType(ABC):
             result=self.compile_firmware()
         shutil.copy2(self.firmware_path, filepath)
         firmware_filename = self.firmware_path.split("/")[-1]
-        #self.firmware_path=f"[CONFIG_DIR]/{firmware_filename}"
+        self.firmware_path = os.path.abspath(filepath)
         logger.debug(f"Saved firmware {self} to file '{filepath}'")
     
     def remove_firmware(self):

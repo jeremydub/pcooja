@@ -10,7 +10,7 @@ CoojaSimulation.set_contiki_path("/home/user/contiki-ng")
 folder = CoojaSimulation.get_contiki_path()+"/examples"
 
 import logging
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 def simulation_example1():
     csc_filepath=f"{folder}/rpl-udp/rpl-udp-cooja.csc"
@@ -36,7 +36,7 @@ def simulation_example2():
     simulation = CoojaSimulation(topology, timeout=30)
 
     # Run the simulation and store the log and radio data in specific files
-    simulation.run_with_gui()
+    simulation.run()
 
 def simulation_example3():
     csc_filepath=f"{folder}/rpl-udp/rpl-udp-sky.csc"
@@ -189,17 +189,17 @@ def simulation_example8():
     """
     Run simulations on multiple threads
     """
-    filepath=folder+"/simple-udp-rpl/unicast-example.csc"
+    filepath=folder+"/rpl-udp/rpl-udp-cooja.csc"
 
     # Thread dispatcher
     simulation_worker = CoojaSimulationWorker()
 
-    rx_list = [0.4,0.6,0.8,1.0]
+    rx_list = [0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
     for rx in rx_list:
         # Create a simulation object from an existing .csc file.
         simulation = CoojaSimulation.from_csc(filepath)
-        simulation.success_ratio_rx = rx
-        simulation.timeout = 60
+        simulation.topology.radiomedium.success_ratio_rx = rx
+        simulation.timeout = 100
 
         # arguments that would normally be passed to simulation.run()
         args={'pcap_file':'simulation_'+str(rx)+".pcap", 'log_file':'simulation_'+str(rx)+".log"}
@@ -228,4 +228,4 @@ def simulation_example9():
     simulation.run_with_gui()
 
 if __name__ == "__main__":
-    simulation_example7()
+    simulation_example8()

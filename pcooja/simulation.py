@@ -25,17 +25,21 @@ logger = logging.getLogger("pcooja")
 
 class CoojaSimulation:
     CONTIKI_PATH = None
+    COUNTER = 0
     def __init__(self, topology, seed=None, title="Simulation",\
-                 timeout=600, debug_info={}, clean_firmwares=False):
+                 timeout=600, debug_info={}):
         if seed == None:
             self.seed=random.randint(0,10000000)
         else:
             self.seed=seed
+
         self.topology=copy.deepcopy(topology)
         self.title=title
         self.timeout=timeout
-        now=datetime.datetime.now()
-        self.id=now.strftime("%Y%d%m_%H%M%S_") + hex(id(self))[2:]
+        self._generate_id()
+
+        # Temporary directory used for exporting configuration file and firmwares
+        self.temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{self.id}/"
 
         mote_types=[]
         for mote in topology:
@@ -46,58 +50,31 @@ class CoojaSimulation:
         # User-defined dictionary used for debugging or for later analysis
         self.debug_info=debug_info
         self.return_value=-1
-        self.clean_firmwares = clean_firmwares
         
         self.set_script(TimeoutScript(self.timeout, with_gui=False))
 
-    @staticmethod
-    def set_contiki_path(path):
-        if path[-1] == "/":
-            path = path[:-1]
-        contiki_exists = os.path.exists(f"{path}/Makefile.include")
-        if contiki_exists:
-            CoojaSimulation.CONTIKI_PATH = path
-            os.environ["CONTIKI_PATH"] = path
-            misc_path = os.path.abspath(f"{__file__}/../misc")
-            #os.system(f'CONTIKI_PATH="{path}" MODULE_PATH="{misc_path}" sh {misc_path}/fix_cooja.sh')
-        else:
-            raise SettingsError(f"Path '{path}' does not exist or is not a valid Contiki folder")
-
-    @staticmethod
-    def get_contiki_path():
-        if CoojaSimulation.CONTIKI_PATH == None:
-            contiki_path = "/home/user/contiki"
-            contiki_exists = os.path.exists(f"{contiki_path}/Makefile.include")
-            if contiki_exists:
-                CoojaSimulation.CONTIKI_PATH = contiki_path
-            else:
-                raise SettingsError("Contiki Not Found")
-        return CoojaSimulation.CONTIKI_PATH
+    def _generate_id(self):
+        CoojaSimulation.COUNTER += 1
+        now=datetime.datetime.now()
+        self.id=f"{now.strftime('%Y%d%m_%H%M%S')}_{CoojaSimulation.COUNTER}"
             
     def set_script(self, script_runner):
         """ Change the default script file """
         self.script_runner = script_runner
 
-    def run(self, log_file=None, pcap_file=None, filename_prefix=None, enable_log=True, \
-                enable_pcap=True, remove_csc=True, folder="data"):
+    def run(self, log_file=None, pcap_file=None, enable_log=True, enable_pcap=True, export=True):
         code = -1
+        origin_pcap_file = None
+        test_failed = False
         segfault = False
+        contiki_path = self.get_contiki_path()
 
-        temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{self.id}/"
-        os.makedirs(temp_dir)
 
         try:
-            csc_filepath = f"{temp_dir}{self.id}.csc"
-            self.check_settings()
-            CSCParser.export_simulation(self, csc_filepath, enable_log, enable_pcap)
-            absolute_path=os.path.abspath(csc_filepath)
+            if export:
+                self.export(self.temp_dir)
 
-            contiki_path = self.get_contiki_path()
-
-            command=f"cooja --args='-nogui=\"{absolute_path}\" -contiki=\"{contiki_path}\" -logdir=\"{temp_dir}\"'"
-
-            origin_pcap_file = None
-            test_failed = False
+            command=f"cooja --args='-nogui=\"{self.csc_filepath}\" -contiki=\"{contiki_path}\" -logdir=\"{self.temp_dir}\"'"
 
             logger.info("Starting Simulation")
             logger.debug(f" - Title : {self.title}")
@@ -138,33 +115,21 @@ class CoojaSimulation:
             self.return_value=code
             segfault = segfault or code == 139 or code == 134
 
-            if self.has_suceed() or segfault or test_failed:
+            if self.has_succeeded() or segfault or test_failed:
                 if test_failed:
                     logger.warn("Simulator script resulted in FAILED TEST")
-                if folder != None and folder != "":
-                    if not os.path.exists(folder) and (log_file == None or pcap_file == None) :
-                        os.makedirs(folder)
-                    if folder[-1] != "/":
-                        folder += "/"
-                else:
-                    folder = ""
-                prefix = folder
-                if filename_prefix != None:
-                    prefix += str(filename_prefix)
                 if enable_log:
                     if log_file == None:
-                        log_file = f"{prefix}{self.id}.log"
-
+                        log_file = f"{self.id}.log"
                     self.log_file=log_file
                     log_file_folder = "/".join(log_file.split("/")[:-1])
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
                         os.makedirs(log_file_folder)
-                    shutil.copy(f"{temp_dir}COOJA.testlog",log_file)
+                    shutil.copy(f"{self.temp_dir}COOJA.testlog",log_file)
                     logger.debug(f"Saved COOJA.testlog to {log_file}")
-
                 if enable_pcap:
                     if pcap_file == None:
-                        pcap_file = f"{prefix}{self.id}.pcap"
+                        pcap_file = f"{self.id}.pcap"
                     if origin_pcap_file != None and os.path.exists(origin_pcap_file):
                         self.pcap_file=pcap_file
                         pcap_file_folder = "/".join(pcap_file.split("/")[:-1])
@@ -193,27 +158,23 @@ class CoojaSimulation:
                 segfault_folder = f"simulation-segfault-{hex(id(self))[2:]}"
                 #print(f"\033[38;5;1mSegmentation Fault occured during simulation ! Simulation has been exported in './{segfault_folder}' for further analysis.\033[0m")
                 #self.export(segfault_folder)
-            if remove_csc and self.has_suceed():
-                os.remove(csc_filepath)
             for mote_type in self.mote_types:
                 if mote_type.is_compilable():
                     mote_type.remove_firmware()
-            shutil.rmtree(temp_dir)
+            shutil.rmtree(self.temp_dir)
 
             return code
 
     def run_with_gui(self):
-        
         if self.script_runner == None:
             self.script_runner = TimeoutScript(self.timeout, with_gui=False)
 
-        temp_folder = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
+        temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
         try:
-            self.export(temp_folder, gui_enabled=True)
-            absolute_path=os.path.abspath(f"{temp_folder}/simulation.csc")
+            self.export(self.temp_dir, gui_enabled=True)
 
             contiki_path = self.get_contiki_path()
-            command=f"cd {temp_folder} && cooja --args='-quickstart=\"{absolute_path}\" -contiki=\"{contiki_path}\"'"
+            command=f"cooja --args='-quickstart=\"{self.temp_dir}/simulation.csc\" -contiki=\"{contiki_path}\"'"
             command +=" 2> /dev/null > /dev/null"
             os.system(command)
         except CompilationError as e:
@@ -221,7 +182,7 @@ class CoojaSimulation:
         except SettingsError as e:
             print(e)
         finally:
-            shutil.rmtree(temp_folder)
+            shutil.rmtree(self.temp_dir)
 
     def handle_segfault(self):
         logger.debug(f"Handling segmentation fault")
@@ -258,83 +219,76 @@ class CoojaSimulation:
         for mote in self.topology:
             if mote.mote_type == None:
                 errors.append(f"Mote #{mote.id} has no mote type")
-
-        if len(errors) > 0:
-            raise SettingsError("\n".join(errors))
-
-        # Check mote type and firmware
+        # Check that firmwares exist
         for mote_type in self.mote_types:
-            if not mote_type.firmware_exists() or mote_type.compile_command != None or self.clean_firmwares:
-                if mote_type.is_compilable():
-                    compiled = mote_type.compile_firmware(clean=self.clean_firmwares)
-                    if not compiled:
-                        errors.append(f"Firmware '{mote_type.firmware_path}' did not compile correctly")
-                if not mote_type.firmware_exists():
-                    errors.append(f"Firmware '{mote_type.firmware_path}' does not exist")
-
+            if not mote_type.firmware_exists():
+                errors.append(f"Firmware '{mote_type.firmware_path}' does not exist")
         if len(errors) > 0:
+            for error in errors:
+                logger.error(error)
             raise SettingsError("\n".join(errors))
 
-    def has_suceed(self):
+    def has_succeeded(self):
         return self.return_value==0
 
     def get_log_filepath(self):
-        if self.has_suceed:
+        if self.has_succeeded:
             return self.log_file
         else:
             return None
 
     def get_pcap_filepath(self):
-        if self.has_suceed:
+        if self.has_succeeded:
             return self.pcap_file
         else:
             return None
 
-    def set_pcap_log_file(self, file_name):
-        """ Set the pcap and log file to overpass the run step
-        The file name containt the folder for exemple:
-        file_name should be like ""data/simulation_20171003_150539_7f99d23f3b48"
-        """
-        self.pcap_file = f"{file_name}.pcap"
-        self.log_file = f"{file_name}.log"
-        self.return_value = 0
-
-
     def export(self, folder=None, gui_enabled=False):
         if folder == None:
-            folder = f"simulation_{self.id}"
+            folder = self.temp_dir
 
-        if folder[-1] == "/":
-            folder = folder[:-1]
+        logger.info(f"Exporting simulation in '{folder}/' ...")
 
         if not os.path.exists(folder):
             os.makedirs(folder)
 
+        errors = []
+        for mote_type in self.mote_types:
+            if mote_type.is_compilable():
+                compiled = mote_type.compile_firmware(clean=True)
+                if compiled:
+                    firmware_filename = mote_type.firmware_path.split("/")[-1]
+                    new_path = f"{folder}/{firmware_filename}"
+                    mote_type.save_firmware_as(new_path)
+                else:
+                    errors.append(f"Firmware '{mote_type.firmware_path}' did not compile correctly")
+        if len(errors) > 0:
+            for error in errors:
+                logger.error(error)
+            raise SettingsError("\n".join(errors))
+
         self.check_settings()
+        logger.debug("Saving simulation as Cooja file (.csc)")
+        self.csc_filepath = os.path.abspath(f"{folder}/simulation.csc")
+        CSCParser.export_simulation(self, self.csc_filepath, gui_enabled=gui_enabled)
 
-        sim = copy.deepcopy(self)
-
-        logger.info(f"Exporting simulation in '{folder}/' ...")
-
-        i=0
-        for i in range(len(self.mote_types)):
-            firmware_filename = self.mote_types[i].firmware_path.split("/")[-1]
-            new_path = f"{folder}/{firmware_filename}"
-            self.mote_types[i].save_firmware_as(new_path)
-
-        logger.info("Saving simulation as Cooja file (.csc)")
-        CSCParser.export_simulation(sim, f"{folder}/simulation.csc", gui_enabled=gui_enabled)
-
+    def __repr__(self):
+        duration = str(self.timeout)
+        if self.timeout / 60 == 0:
+            duration += "sec"
+        else :
+            duration = f"{self.timeout/60}min"
+        return f"\"{self.title}\" : {len(self.topology)} motes, duration={duration}"
 
     @staticmethod
-    def from_csc(csc_path):
+    def from_csc(csc_filepath):
         """
         Parse a Cooja simulation configuration (.csc) file
         """
         
-        if not os.path.exists(csc_path):
-            raise OSError(f"File '{csc_path}' does not exist")
-        tree = etree.parse(csc_path)
+        if not os.path.exists(csc_filepath):
+            raise OSError(f"File '{csc_filepath}' does not exist")
+        tree = etree.parse(csc_filepath)
         simulation_tag=tree.xpath("/simconf/simulation")[0]
 
         # Details
@@ -344,7 +298,7 @@ class CoojaSimulation:
             random_seed = int(random_seed)
         motedelay_us = simulation_tag.xpath("motedelay_us/text()")
 
-        topology = Topology.from_xml(tree, csc_path)
+        topology = Topology.from_xml(tree, csc_filepath)
         
         plugin_tags=tree.xpath("/simconf/plugin")
 
@@ -358,7 +312,7 @@ class CoojaSimulation:
                     script = LoadScript(None, script=script_content)
                 else:
                     script_file = plugin_tag.xpath("plugin_config/scriptfile/text()")[0]
-                    parts = csc_path.split('/')
+                    parts = csc_filepath.split('/')
                     folder = "/".join(parts[:-1])
                     script_file = script_file.replace('[CONFIG_DIR]', folder)
                     script = LoadScript(None, script_file=script_file)
@@ -366,16 +320,31 @@ class CoojaSimulation:
         simulation = CoojaSimulation(topology=topology, seed=random_seed)
         if script != None:
             simulation.set_script(script)
+        simulation.csc_filepath = os.path.abspath(csc_filepath)
 
         return simulation
 
-    def __repr__(self):
-        duration = str(self.timeout)
-        if self.timeout / 60 == 0:
-            duration += "sec"
-        else :
-            duration = f"{self.timeout/60}min"
-        return f"\"{self.title}\" : {len(self.topology)} motes, duration={duration}"
+    @staticmethod
+    def set_contiki_path(path):
+        if path[-1] == "/":
+            path = path[:-1]
+        contiki_exists = os.path.exists(f"{path}/Makefile.include")
+        if contiki_exists:
+            CoojaSimulation.CONTIKI_PATH = path
+            os.environ["CONTIKI_PATH"] = path
+        else:
+            raise SettingsError(f"Path '{path}' does not exist or is not a valid Contiki folder")
+
+    @staticmethod
+    def get_contiki_path():
+        if CoojaSimulation.CONTIKI_PATH == None:
+            contiki_path = "/home/user/contiki"
+            contiki_exists = os.path.exists(f"{contiki_path}/Makefile.include")
+            if contiki_exists:
+                CoojaSimulation.CONTIKI_PATH = contiki_path
+            else:
+                raise SettingsError("Contiki Not Found")
+        return CoojaSimulation.CONTIKI_PATH
 
 
 class CoojaSimulationWorker:
@@ -393,13 +362,16 @@ class CoojaSimulationWorker:
         if isinstance(simulation,CoojaSimulation):
             self.simulations.append(simulation)
 
+            # Do not export (and compile firmwares) again since
+            # we already export before running when using worker
+            run_args["export"] = False
+
             self.id_to_args[id(simulation)] = run_args
 
     def run(self):
 
-        # Check settings and compile firmware before threads start
         for simulation in self.simulations:
-            simulation.check_settings()
+            simulation.export()
 
         self.simulations.sort(key=lambda x : int(10.**6*len(x.topology)/x.timeout))
 
