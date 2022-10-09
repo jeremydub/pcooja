@@ -91,9 +91,9 @@ class CoojaSimulation:
                 with Progress(refresh_per_second=2) as progress:
                     self.progress_bar_handler = progress
                     self.progress_bar_task = progress.add_task(f"[orange]{self.title} : Waiting", total=100)
-                    self._run_command()
+                    self._run_command(with_gui=with_gui)
             else:
-                self._run_command()
+                self._run_command(with_gui=with_gui)
 
             if self.has_succeeded() or self.segfaulted or self.test_failed:
                 if self.test_failed:
@@ -106,13 +106,14 @@ class CoojaSimulation:
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
                         os.makedirs(log_file_folder)
                     source = f"{self.temp_dir}COOJA.testlog"
-                    destination = log_file
-                    try:
-                        os.rename(source, destination)
-                    except OSError as e:
-                        shutil.copy2(source, destination)
-                        os.remove(source)
-                    logger.debug(f"Saved COOJA.testlog to {log_file}")
+                    if os.path.exists(source):
+                        destination = log_file
+                        try:
+                            os.rename(source, destination)
+                        except OSError as e:
+                            shutil.copy2(source, destination)
+                            os.remove(source)
+                        logger.debug(f"Saved COOJA.testlog to {log_file}")
                 if enable_pcap:
                     if pcap_file == None:
                         pcap_file = f"{self.id}.pcap"
