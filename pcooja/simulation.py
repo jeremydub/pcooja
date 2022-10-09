@@ -125,7 +125,13 @@ class CoojaSimulation:
                     log_file_folder = "/".join(log_file.split("/")[:-1])
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
                         os.makedirs(log_file_folder)
-                    shutil.copy(f"{self.temp_dir}COOJA.testlog",log_file)
+                    source = f"{self.temp_dir}COOJA.testlog"
+                    destination = log_file
+                    try:
+                        os.rename(source, destination)
+                    except OSError as e:
+                        shutil.copy2(source, destination)
+                        os.remove(source)
                     logger.debug(f"Saved COOJA.testlog to {log_file}")
                 if enable_pcap:
                     if pcap_file == None:
@@ -135,7 +141,13 @@ class CoojaSimulation:
                         pcap_file_folder = "/".join(pcap_file.split("/")[:-1])
                         if pcap_file_folder != '' and  not os.path.exists(pcap_file_folder):
                             os.makedirs(pcap_file_folder)
-                        shutil.copy(origin_pcap_file,pcap_file)
+                        source = origin_pcap_file
+                        destination = pcap_file
+                        try:
+                            os.rename(source, destination)
+                        except OSError as e:
+                            shutil.copy2(source, destination)
+                            os.remove(source)
                         logger.debug(f"Saved captured packets to {pcap_file}")
                     elif origin_pcap_file == None:
                         logger.warning(f"Pcap file was not provided by Cooja")

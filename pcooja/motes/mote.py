@@ -322,6 +322,8 @@ class MoteType(ABC):
                 f.close()
                 os.remove(f"{folder}/{error_file}")
             raise CompilationError("An error occured during firmware compilation")
+        
+        os.remove(f"{folder}/{error_file}")
 
         expected_firmware_location = os.path.abspath(f"{folder}/{self.get_expected_filename()}")
         if expected_firmware_location != self.firmware_path and os.path.exists(expected_firmware_location):
@@ -358,7 +360,13 @@ class MoteType(ABC):
         if not self.firmware_exists():
             logger.debug(f"Firmware {self} does not exist yet, compiling...")
             result=self.compile_firmware()
-        shutil.copy2(self.firmware_path, filepath)
+        source = self.firmware_path
+        destination = filepath
+        try:
+            os.rename(source, destination)
+        except OSError as e:
+            shutil.copy2(source, destination)
+            os.remove(source)
         firmware_filename = self.firmware_path.split("/")[-1]
         self.firmware_path = os.path.abspath(filepath)
         logger.debug(f"Saved firmware {self} to file '{filepath}'")

@@ -109,7 +109,13 @@ class CoojaMoteType(MoteType):
         folder = "/".join(parts[:-1])
         built_map_file = f"{folder}/{self.environment_variables['LIBNAME'][:-6]}.map"
         if success and os.path.exists(built_map_file):
-            shutil.copy2(built_map_file, self.map_file)
+            source = built_map_file
+            destination = self.map_file
+            try:
+                os.rename(source, destination)
+            except OSError as e:
+                shutil.copy2(source, destination)
+                os.remove(source)
         return success
 
     def firmware_exists(self):
@@ -122,9 +128,15 @@ class CoojaMoteType(MoteType):
         dest_map_file = ".".join(filepath.split(".")[:-1]+["map"])
         map_filename = dest_map_file.split("/")[-1]
         if os.path.exists(filepath) and os.path.exists(self.map_file):
-            shutil.copy2(self.map_file, dest_map_file)
+            source = self.map_file
+            destination = dest_map_file
+            try:
+                os.rename(source, destination)
+            except OSError as e:
+                shutil.copy2(source, destination)
+                os.remove(source)
             logger.debug(f"Saved associated MAP file to file '{dest_map_file}'")
-            #self.map_file=f"[CONFIG_DIR]/{map_filename}"
+            self.map_file = os.path.abspath(dest_map_file)
     
     def remove_firmware(self):
         super().remove_firmware()
