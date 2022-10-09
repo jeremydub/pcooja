@@ -11,6 +11,9 @@ import tempfile
 import threading
 import traceback
 import glob
+import time
+import queue
+from rich.progress import Progress
 
 from .motes.mote import CompilationError
 from .topology import Topology
@@ -49,9 +52,18 @@ class CoojaSimulation:
         
         # User-defined dictionary used for debugging or for later analysis
         self.debug_info=debug_info
-        self.return_value=-1
         
         self.set_script(TimeoutScript(self.timeout, with_gui=False))
+        
+        self.log_filepath = None
+        self.pcap_filepath = None
+        self.test_failed = False
+        self.segfaulted = False
+        self.return_value=-1
+
+
+        self.progress_bar_handler = None
+        self.progress_bar_task = None
 
     def _generate_id(self):
         CoojaSimulation.COUNTER += 1
@@ -62,66 +74,34 @@ class CoojaSimulation:
         """ Change the default script file """
         self.script_runner = script_runner
 
-    def run(self, log_file=None, pcap_file=None, enable_log=True, enable_pcap=True, export=True):
-        code = -1
-        origin_pcap_file = None
-        test_failed = False
-        segfault = False
-        contiki_path = self.get_contiki_path()
-
-
+    def run(self, log_file=None, pcap_file=None, enable_log=True, enable_pcap=True, with_gui=False, export=True):
+        if self.script_runner == None:
+            self.script_runner = TimeoutScript(self.timeout, with_gui=False)
         try:
             if export:
-                self.export(self.temp_dir)
+                self.export(self.temp_dir, gui_enabled=with_gui)
 
-            command=f"cooja --args='-nogui=\"{self.csc_filepath}\" -contiki=\"{contiki_path}\" -logdir=\"{self.temp_dir}\"'"
+            
+            if self.progress_bar_handler == None:
+                logger.info("Starting Simulation")
+                logger.debug(f" - Title : {self.title}")
+                logger.debug(f" - Random seed : {self.seed}")
+                logger.debug(f" - # nodes : {len(self.topology.motes)}")
 
-            logger.info("Starting Simulation")
-            logger.debug(f" - Title : {self.title}")
-            logger.debug(f" - Random seed : {self.seed}")
-            logger.debug(f" - # nodes : {len(self.topology.motes)}")
+                with Progress(refresh_per_second=2) as progress:
+                    self.progress_bar_handler = progress
+                    self.progress_bar_task = progress.add_task(f"[orange]{self.title} : Waiting", total=100)
+                    self._run_command()
+            else:
+                self._run_command()
 
-            p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-            if logger.level <= logging.INFO:
-                time_remaining = ""
-                progress = "Starting..."
-                for line in iter(p.stdout.readline, ''):
-                    if not line :
-                        break
-                    else:
-                        line = line.decode().strip()
-                        if "% completed, " in line:
-                            parts = line.split("completed, ")
-                            time_remaining = " | "+ parts[1].split()[0]+" sec"
-                            progress = parts[0].split()[-1]
-                        elif "Simulated time" in line:
-                            progress = "100%"
-                            time_remaining = ""
-                            logger.info(f"{self.title}   [{progress}{time_remaining}]                    \r")
-                            break
-                        elif "Script timeout in" in line:
-                            progress = "0%"
-                            time_remaining = ""
-                        elif "Opened pcap file" in line:
-                            origin_pcap_file = f"{contiki_path}/tools/cooja/{line.split()[-1]}"
-                        elif "Segmentation fault" in line or "Java Result: 139" in line:
-                            segfault = True
-                        elif "TEST FAILED" in line:
-                            test_failed = True
-                    logger.info(f"{self.title}   [{progress}{time_remaining}]                            \r")
-                p.stdout.close()
-                logger.info("")
-            code=p.wait()
-            self.return_value=code
-            segfault = segfault or code == 139 or code == 134
-
-            if self.has_succeeded() or segfault or test_failed:
-                if test_failed:
+            if self.has_succeeded() or self.segfaulted or self.test_failed:
+                if self.test_failed:
                     logger.warn("Simulator script resulted in FAILED TEST")
                 if enable_log:
                     if log_file == None:
                         log_file = f"{self.id}.log"
-                    self.log_file=log_file
+                    self.log_filepath=log_file
                     log_file_folder = "/".join(log_file.split("/")[:-1])
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
                         os.makedirs(log_file_folder)
@@ -136,12 +116,11 @@ class CoojaSimulation:
                 if enable_pcap:
                     if pcap_file == None:
                         pcap_file = f"{self.id}.pcap"
-                    if origin_pcap_file != None and os.path.exists(origin_pcap_file):
-                        self.pcap_file=pcap_file
+                    if self.pcap_filepath != None and os.path.exists(self.pcap_filepath):
                         pcap_file_folder = "/".join(pcap_file.split("/")[:-1])
                         if pcap_file_folder != '' and  not os.path.exists(pcap_file_folder):
                             os.makedirs(pcap_file_folder)
-                        source = origin_pcap_file
+                        source = self.pcap_filepath
                         destination = pcap_file
                         try:
                             os.rename(source, destination)
@@ -149,14 +128,14 @@ class CoojaSimulation:
                             shutil.copy2(source, destination)
                             os.remove(source)
                         logger.debug(f"Saved captured packets to {pcap_file}")
-                    elif origin_pcap_file == None:
+                    elif self.pcap_filepath == None:
                         logger.warning(f"Pcap file was not provided by Cooja")
                     else:
-                        logger.warning(f"Could not find {origin_pcap_file}")
+                        logger.warning(f"Could not find {self.pcap_filepath}")
             else:
-                if os.path.exists(f"{temp_dir}/COOJA.log"):
+                if os.path.exists(f"{self.temp_dir}/COOJA.log"):
                     print("\033[38;5;1m")
-                    os.system(f"cat {temp_dir}/COOJA.log")
+                    os.system(f"cat {self.temp_dir}/COOJA.log")
                     print("\033[0m")
         except CompilationError as e:
             print(e)
@@ -165,38 +144,65 @@ class CoojaSimulation:
         except Exception as e:
             traceback.print_exc()
         finally:
-            if segfault:
-                self.handle_segfault()
-                segfault_folder = f"simulation-segfault-{hex(id(self))[2:]}"
-                #print(f"\033[38;5;1mSegmentation Fault occured during simulation ! Simulation has been exported in './{segfault_folder}' for further analysis.\033[0m")
-                #self.export(segfault_folder)
+            self._handle_segfault()
             for mote_type in self.mote_types:
                 if mote_type.is_compilable():
                     mote_type.remove_firmware()
             shutil.rmtree(self.temp_dir)
 
-            return code
+            return self.return_value
 
-    def run_with_gui(self):
-        if self.script_runner == None:
-            self.script_runner = TimeoutScript(self.timeout, with_gui=False)
+    def _run_command(self, with_gui=False):
+        contiki_path = self.get_contiki_path()
+        cooja_mode = "quickstart" if with_gui else "nogui"
+        command=f"cooja --args='-{cooja_mode}=\"{self.csc_filepath}\" -contiki=\"{contiki_path}\" -logdir=\"{self.temp_dir}\"'"
 
-        temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{hex(id(self))[2:]}/"
-        try:
-            self.export(self.temp_dir, gui_enabled=True)
+        self.progress_bar_handler.update(self.progress_bar_task,
+                                         description = f"{self.title} | [yellow]Starting")
 
-            contiki_path = self.get_contiki_path()
-            command=f"cooja --args='-quickstart=\"{self.temp_dir}/simulation.csc\" -contiki=\"{contiki_path}\"'"
-            command +=" 2> /dev/null > /dev/null"
-            os.system(command)
-        except CompilationError as e:
-            print(e)
-        except SettingsError as e:
-            print(e)
-        finally:
-            shutil.rmtree(self.temp_dir)
+        p = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
 
-    def handle_segfault(self):
+        for line in iter(p.stdout.readline, ''):
+            if not line :
+                break
+            else:
+                line = line.decode().strip()
+                if "% completed, " in line:
+                    parts = line.split("completed, ")
+                    time_remaining = parts[1].split()[0]
+                    progress = int(parts[0].split()[-1][:-1])
+                    self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
+                                                     description = f"{self.title} | [cyan]Running")
+                elif "Simulated time" in line:
+                    progress = 100
+                    self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
+                                                     description = f"{self.title} | [green]Completed")
+                    break
+                elif "Script timeout in" in line:
+                    progress = 0
+                    self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
+                                                     description = f"{self.title} | [cyan]Running")
+                elif "Opened pcap file" in line:
+                    self.pcap_filepath = f"{contiki_path}/tools/cooja/{line.split()[-1]}"
+                elif "Segmentation fault" in line or "Java Result: 139" in line:
+                    self.segfaulted = True
+                elif "TEST FAILED" in line:
+                    self.test_failed = True
+        p.stdout.close()
+        self.return_value=p.wait()
+        self.segfaulted = self.segfaulted or self.return_value == 139 or self.return_value == 134
+        self.progress_bar_handler.update(self.progress_bar_task, completed=100)
+
+        if self.segfaulted:
+            description = f"{self.title} | [red]SEGFAULT"
+            self.progress_bar_handler.update(self.progress_bar_task, description=description)
+        elif self.test_failed:
+            description = f"{self.title} | [red]Test failed"
+            self.progress_bar_handler.update(self.progress_bar_task, description=description)
+
+    def _handle_segfault(self):
+        if not self.segfaulted:
+            return
         logger.debug(f"Handling segmentation fault")
         try:
             with open("/proc/sys/kernel/core_pattern", "r") as f:
@@ -226,6 +232,10 @@ class CoojaSimulation:
         os.system(command)
         print("\033[0m")
 
+        segfault_folder = f"simulation-segfault-{hex(id(self))[2:]}"
+        #print(f"\033[38;5;1mSegmentation Fault occured during simulation ! Simulation has been exported in './{segfault_folder}' for further analysis.\033[0m")
+        #self.export(segfault_folder)
+
     def check_settings(self):
         errors = []
         for mote in self.topology:
@@ -245,13 +255,13 @@ class CoojaSimulation:
 
     def get_log_filepath(self):
         if self.has_succeeded:
-            return self.log_file
+            return self.log_filepath
         else:
             return None
 
     def get_pcap_filepath(self):
         if self.has_succeeded:
-            return self.pcap_file
+            return self.pcap_filepath
         else:
             return None
 
@@ -387,30 +397,37 @@ class CoojaSimulationWorker:
 
         self.simulations.sort(key=lambda x : int(10.**6*len(x.topology)/x.timeout))
 
-        simulations_per_thread = []
-        for i in range(self.n_thread):
-            simulations_per_thread.append([])
+        simulations_queue = queue.Queue()
 
-        i = 0
         for simulation in self.simulations:
-            simulations_per_thread[i%self.n_thread].append(simulation)
-            i += 1
+            simulations_queue.put(simulation)
 
         threads=[]
 
         def target(thread_number):
-            for simulation in simulations_per_thread[thread_number]:
-                kwargs=self.id_to_args[id(simulation)]
-                simulation.run(**kwargs)
-                if self.callback != None:
-                    self.callback(simulation)
+            try:
+                while True:
+                    simulation = simulations_queue.get_nowait()
+                    kwargs=self.id_to_args[id(simulation)]
+                    simulation.run(**kwargs)
+                    if self.callback != None:
+                        self.callback(simulation)
+            except queue.Empty as e:
+                pass
 
         for i in range(self.n_thread):
             thread = threading.Thread(target=target, args=(i,))
             threads.append(thread)
-
-        for thread in threads:
-            thread.start()
+    
+        with Progress(refresh_per_second=2) as progress:
+            for simulation in self.simulations:
+                simulation.progress_bar_handler = progress
+                simulation.progress_bar_task = progress.add_task(f"{simulation.title}", total=100)
+            for thread in threads:
+                thread.start()
+                time.sleep(0.1)
+            while not progress.finished:
+                time.sleep(1)
 
         for thread in threads:
             thread.join()
