@@ -193,23 +193,24 @@ def process_command(context):
             context["command_filter_module"] = command
             context["viewing_log__reload_log"] = True
         case Shortcut.SCRIPT_COMMAND:
-            f = context["script_command__functions"][context["script_command__select_pos"]]
-            
-            buffer = io.StringIO()
-            def script_print(*args,**kwargs):
-                kwargs["file"] = buffer
-                print(*args, **kwargs)
+            if len(context["script_command__functions"]) > 0:
+                f = context["script_command__functions"][context["script_command__select_pos"]]
+                
+                buffer = io.StringIO()
+                def script_print(*args,**kwargs):
+                    kwargs["file"] = buffer
+                    print(*args, **kwargs)
 
-            f.__globals__['print'] = script_print
-            try:
-                f(Log(messages=context["viewing_log__messages"]))
-                context["viewing_script__lines"] = buffer.getvalue().split("\n")
-            except Exception:
-                tb = traceback.format_exc()
-                context["viewing_script__lines"] = tb.split("\n")
-            del(f.__globals__['print'])
-            context["current_state"] = State.VIEWING_SCRIPT
-            context["pressed"] = 0
+                f.__globals__['print'] = script_print
+                try:
+                    f(Log(messages=context["viewing_log__messages"]))
+                    context["viewing_script__lines"] = buffer.getvalue().split("\n")
+                except Exception:
+                    tb = traceback.format_exc()
+                    context["viewing_script__lines"] = tb.split("\n")
+                del(f.__globals__['print'])
+                context["current_state"] = State.VIEWING_SCRIPT
+                context["pressed"] = 0
         case Shortcut.SEARCH_COMMAND:
             text = command
             if text in ["", "*"]:
@@ -237,7 +238,7 @@ def update_log(context):
         filepath = context["log_filepaths"][context["selecting_log__selected_log"]]
         log = Log(filepath)
         context["viewing_log__logger"] = log 
-        colors = [2,3,4,5,6]+list(range(9,16))+[80,35,40,125,200,227,196,100,203]
+        colors = [2,3,4,5,6]+list(range(9,16))+[80,35,40,126,200,227,195,100,203]
         for node_id in log.node_ids:
             #curses.init_pair(4+node_id, colors[node_id%len(colors)], -1)
             curses.init_pair(4+node_id, 16, colors[node_id%len(colors)], )
