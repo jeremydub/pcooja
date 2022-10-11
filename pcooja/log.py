@@ -40,20 +40,19 @@ class Log:
     revert_modules = {None: "-"}
     module_idx = 0
 
-    def __init__(self, log_file):
-        if os.path.exists(log_file):
-            self.log_file=log_file
-            self.debug=False
-            self.parse_message = contiki_ng_default_parser
-            self.parse_file(log_file)
-        else:
-            raise IOError("Log file does not exists !")
+    def __init__(self, log_file=None, messages=None):
+        if log_file != None:
+            if os.path.exists(log_file):
+                self.log_file=log_file
+                self.parse_message = contiki_ng_default_parser
+                self.parse_file(log_file)
+            else:
+                raise IOError("Log file does not exists !")
+        elif messages != None:
+            self.from_messages(messages)
 
     def parse_file(self, file):
-
-        nid_to_messages = {}
         messages = []
-
         with open(file, 'r') as f:
             for line in f:
                     i_start = 0
@@ -66,19 +65,26 @@ class Log:
                     node_id=int(line[i_start:i_end2])
                     i_start = i_end2+1
 
-                    if node_id not in nid_to_messages:
-                        nid_to_messages[node_id] = []
-
                     message = self.parse_message(time, node_id, line[i_start:])
                     if message != None:
-                        nid_to_messages[node_id].append(message)
                         messages.append(message)
-
-        self.dico = nid_to_messages
+        self.from_messages(messages)
+    
+    def from_messages(self, messages):
+        max_modulename_length = 0
+        nid_to_messages = {}
+        for message in messages:
+            nid_to_messages.setdefault(message[Log.NODE_ID], []).append(message)
+            module_name = Log.revert_modules[message[Log.LOG_MODULE]]
+            if len(module_name) > max_modulename_length:
+                max_modulename_length = len(module_name)
+        self.max_modulename_length=max_modulename_length
         self.messages = messages
+        self.dico = nid_to_messages
+        self.node_ids = list(nid_to_messages.keys())
 
 
-    def get_messages(self, contain=None, log_level=None, log_module=None, node_id=None):
+    def get_messages(self, contain=None, log_level=None, log_module=None, node_id=None, time=None):
         result = self.messages
         if type(node_id) == int:
             result = self.dico.get(node_id, result)
@@ -94,6 +100,20 @@ class Log:
             else:
                 f = contain
             result = filter(lambda message: f(message[Log.MESSAGE]), result) 
+        if time != None:
+            conditions = time.replace(",", " ").replace("<", " <").replace(">", " >").split()
+            import sys
+            for condition in conditions:
+                if condition == "":
+                    continue
+                if condition.startswith(">="):
+                    result = list(filter(lambda message: message[Log.TIME] >= int(float(condition[2:])*1000000), result))
+                elif condition.startswith(">"):
+                    result = list(filter(lambda message: message[Log.TIME] > int(float(condition[1:])*1000000), result))
+                elif condition.startswith("<="):
+                    result = list(filter(lambda message: message[Log.TIME] <= int(float(condition[2:])*1000000), result))
+                elif condition.startswith("<"):
+                    result = list(filter(lambda message: message[Log.TIME] < int(float(condition[1:])*1000000), result))
         return list(result)
 
     def get_node_ids(self):

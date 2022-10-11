@@ -29,7 +29,7 @@ logger = logging.getLogger("pcooja")
 class CoojaSimulation:
     CONTIKI_PATH = None
     COUNTER = 0
-    def __init__(self, topology, seed=None, title="Simulation",\
+    def __init__(self, topology, title=None, seed=None,\
                  timeout=600, debug_info={}):
         if seed == None:
             self.seed=random.randint(0,10000000)
@@ -37,9 +37,11 @@ class CoojaSimulation:
             self.seed=seed
 
         self.topology=copy.deepcopy(topology)
-        self.title=title
         self.timeout=timeout
         self._generate_id()
+        if title == None:
+            title = self.id
+        self.title=title
 
         # Temporary directory used for exporting configuration file and firmwares
         self.temp_dir = f"{tempfile.gettempdir()}/cooja_sim_{self.id}/"
@@ -68,7 +70,7 @@ class CoojaSimulation:
     def _generate_id(self):
         CoojaSimulation.COUNTER += 1
         now=datetime.datetime.now()
-        self.id=f"{now.strftime('%Y%d%m_%H%M%S')}_{CoojaSimulation.COUNTER}"
+        self.id=f"{now.strftime('%Y%d%m_%H%M%S')}-{CoojaSimulation.COUNTER}"
             
     def set_script(self, script_runner):
         """ Change the default script file """
@@ -77,6 +79,10 @@ class CoojaSimulation:
     def run(self, log_file=None, pcap_file=None, enable_log=True, enable_pcap=True, with_gui=False, export=True):
         if self.script_runner == None:
             self.script_runner = TimeoutScript(self.timeout, with_gui=False)
+        if log_file == None:
+            log_file = f"{self.title}.log"
+        if pcap_file == None:
+            pcap_file = f"{self.title}.pcap"
         try:
             if export:
                 self.export(self.temp_dir, gui_enabled=with_gui)
@@ -99,8 +105,6 @@ class CoojaSimulation:
                 if self.test_failed:
                     logger.warn("Simulator script resulted in FAILED TEST")
                 if enable_log:
-                    if log_file == None:
-                        log_file = f"{self.id}.log"
                     self.log_filepath=log_file
                     log_file_folder = "/".join(log_file.split("/")[:-1])
                     if log_file_folder != '' and not os.path.exists(log_file_folder):
@@ -115,8 +119,6 @@ class CoojaSimulation:
                             os.remove(source)
                         logger.debug(f"Saved COOJA.testlog to {log_file}")
                 if enable_pcap:
-                    if pcap_file == None:
-                        pcap_file = f"{self.id}.pcap"
                     if self.pcap_filepath != None and os.path.exists(self.pcap_filepath):
                         pcap_file_folder = "/".join(pcap_file.split("/")[:-1])
                         if pcap_file_folder != '' and  not os.path.exists(pcap_file_folder):
@@ -432,8 +434,6 @@ class CoojaSimulationWorker:
 
         for thread in threads:
             thread.join()
-
-        self.simulations = []
 
 class SettingsError(Exception):
     pass
