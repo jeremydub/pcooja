@@ -3,6 +3,8 @@ import math
 import re
     
 def contiki_ng_default_parser(time, node_id, message):
+    if node_id == None:
+        return (None, None, None, None, message.strip())
     i_end = message.find("]")
     if message[0] == "[" and i_end != -1:
         i2 = message.find(':')
@@ -74,6 +76,9 @@ class Log:
         max_modulename_length = 0
         nid_to_messages = {}
         for message in messages:
+            # We skip unformatted messages
+            if message[Log.NODE_ID] == None:
+                continue
             nid_to_messages.setdefault(message[Log.NODE_ID], []).append(message)
             module_name = Log.revert_modules[message[Log.LOG_MODULE]]
             if len(module_name) > max_modulename_length:
@@ -83,43 +88,52 @@ class Log:
         self.dico = nid_to_messages
         self.node_ids = list(nid_to_messages.keys())
 
+    def get_messages(self, *args, **kwargs):
+        return Log.filter_messages(self.messages, *args, **kwargs)
 
-    def get_messages(self, contain=None, log_level=None, log_module=None, node_id=None, time=None):
-        result = self.messages
-        if type(node_id) == int:
-            result = self.dico.get(node_id, result)
-        elif type(node_id) == list:
-            result = filter(lambda message: message[Log.NODE_ID] in node_id, result) 
-        if log_level != None:
-            result = filter(lambda message: message[Log.LOG_LEVEL] != None and message[Log.LOG_LEVEL] <= log_level, result) 
-        if log_module != None:
-            result = filter(lambda message: message[Log.LOG_MODULE] == Log.get_module_id(log_module), result) 
-        if contain != None:
-            if type(contain) == str:
-                f = lambda text: contain in text
-            else:
-                f = contain
-            result = filter(lambda message: f(message[Log.MESSAGE]), result) 
-        if time != None:
-            conditions = time.replace(",", " ").replace("<", " <").replace(">", " >").split()
-            import sys
-            for condition in conditions:
-                if condition == "":
-                    continue
-                if condition.startswith(">="):
-                    result = list(filter(lambda message: message[Log.TIME] >= int(float(condition[2:])*1000000), result))
-                elif condition.startswith(">"):
-                    result = list(filter(lambda message: message[Log.TIME] > int(float(condition[1:])*1000000), result))
-                elif condition.startswith("<="):
-                    result = list(filter(lambda message: message[Log.TIME] <= int(float(condition[2:])*1000000), result))
-                elif condition.startswith("<"):
-                    result = list(filter(lambda message: message[Log.TIME] < int(float(condition[1:])*1000000), result))
-        return list(result)
 
     def get_node_ids(self):
         ids = list(self.dico.keys())
         ids.sort()
         return ids
+    
+    @staticmethod
+    def filter_messages(messages, contain=None, log_level=None, log_module=None, node_id=None, time=None):
+        result = messages
+        if type(node_id) == int:
+            node_id = [node_id]
+        if type(node_id) == list:
+            node_id = node_id + [None] # also include unformatted message
+            result = filter(lambda message: message[Log.NODE_ID] in node_id, result) 
+        if log_level != None:
+            result = filter(lambda message: message[Log.LOG_LEVEL] == None or message[Log.LOG_LEVEL] <= log_level, result) 
+        if log_module != None:
+            result = filter(lambda message: message[Log.LOG_MODULE] == None or message[Log.LOG_MODULE] == Log.get_module_id(log_module), result) 
+        if contain != None:
+            if type(contain) == str:
+                f = lambda text: contain in text
+            else:
+                f = contain
+            # We allow unformatted messages even if no match (used in scripts as sections string)
+            result = filter(lambda message: message[Log.NODE_ID] == None or f(message[Log.MESSAGE]), result) 
+        if time != None:
+            conditions = time.replace(",", " ").replace("<", " <").replace(">", " >").split()
+            for condition in conditions:
+                if condition == "":
+                    continue
+                if condition.startswith(">="):
+                    result = list(filter(lambda message: message[Log.TIME] == None 
+                                         or message[Log.TIME] >= int(float(condition[2:])*1000000), result))
+                elif condition.startswith(">"):
+                    result = list(filter(lambda message: message[Log.TIME] == None
+                                         or message[Log.TIME] > int(float(condition[1:])*1000000), result))
+                elif condition.startswith("<="):
+                    result = list(filter(lambda message: message[Log.TIME] == None
+                                         or message[Log.TIME] <= int(float(condition[2:])*1000000), result))
+                elif condition.startswith("<"):
+                    result = list(filter(lambda message: message[Log.TIME] == None 
+                                         or message[Log.TIME] < int(float(condition[1:])*1000000), result))
+        return list(result)
 
     @staticmethod
     def get_module_id(module_name):

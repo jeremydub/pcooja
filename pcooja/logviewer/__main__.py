@@ -32,6 +32,7 @@ def importCode(code, name):
 if __name__ == "__main__":
     script_files = args["-s"]
     functions = []
+    views = []
     for i, script_file in enumerate(script_files):
         if not os.path.exists(script_file):
             print(f"Script file '{script_file}' does not exist",file=sys.stderr)
@@ -42,7 +43,9 @@ if __name__ == "__main__":
         spec.loader.exec_module(module)
         for name in module.__dict__:
             elem = module.__dict__[name]
-            if inspect.isfunction(elem) and inspect.getfullargspec(elem).args == ["log"]:
+            if inspect.isfunction(elem) and elem.__name__.startswith("view") and inspect.getfullargspec(elem).args == ["log"]:
+                views.append(elem)
+            elif inspect.isfunction(elem) and inspect.getfullargspec(elem).args == ["log"]:
                 functions.append(elem)
 
     path = args["LOG_FILE"]
@@ -52,4 +55,4 @@ if __name__ == "__main__":
         print(f"'{path}' does not exist",file=sys.stderr)
         exit()
 
-    main(path, functions)
+    main(path, functions, views)

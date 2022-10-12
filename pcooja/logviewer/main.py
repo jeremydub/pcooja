@@ -3,6 +3,7 @@ import curses
 import glob
 import io
 import traceback
+import copy
 
 from ..log import Log
 
@@ -10,6 +11,8 @@ from enum import Enum
 
 path = None
 scripts = []
+views = []
+parent = None
 
 class State(Enum):
     SELECTING_LOG = 1
@@ -25,10 +28,13 @@ class Shortcut():
     RESET_FILTERS = ord("r")
     SCRIPT_COMMAND = ord("s")
     SEARCH_COMMAND = ord("/")
+    NEW_VIEW_COMMAND = ord("v")
+    NEXT_VIEW = 9 # Tab key
 
-def init_context():
-    global scripts
+def init_context(stdscr):
+    global scripts, views
     context = {}
+    context["stdscr"] = stdscr
 
     context["current_state"] = State.SELECTING_LOG
     context["log_filepaths"] = get_log_filepaths()
@@ -53,6 +59,8 @@ def init_context():
     context["viewing_log__reload_log"] = True
     context["viewing_log__logger"] = None
     context["viewing_log__horizontal_offset"] = 0
+    context["viewing_log__presets"] = views
+    context["viewing_log__preset"] = None
     # ENTERING_COMMAND
     context["entering_command__prompt"] = ""
     context["entering_command__history"] = []
@@ -75,15 +83,54 @@ def state_selecting_log(context):
         case 10: # ENTER key
             context["selecting_log__selected_log"] = context["selecting_log__list_pos"]
             context["current_state"] = State.VIEWING_LOG
-            return state_viewing_log(context)
+            state_viewing_log(context)
+            for f in context["viewing_log__presets"]:
+                messages = []
+                def script_print(*args, **kwargs):
+                    if len(args) == 1 and len(kwargs) == 0:
+                        if type(args[0]) == list:
+                            messages.extend(args[0])
+                        elif type(args[0]) == str:
+                            messages.append(context["viewing_log__logger"].parse_message(None, None, args[0]))
+                        else:
+                            messages.append(args[0])
+                    else:
+                        buffer = io.StringIO()
+                        kwargs["file"] = buffer
+                        print(*args, **kwargs)
+
+                f.__globals__['print'] = script_print
+                enable = True
+                try:
+                    enable = f(context["viewing_log__logger"])
+                except Exception:
+                    tb = traceback.format_exc()
+                    for line in tb.split("\n"):
+                        messages.append(context["viewing_log__logger"].parse_message(None, None, line))
+                del(f.__globals__['print'])
+                if enable != False:
+                    view_name = f.__doc__.strip()[:20]
+                    new_context = add_view(context["parent"], view_name)
+                    new_context["viewing_log__messages"] = messages
+                    new_context["viewing_log__logger"] = Log(messages=messages)
+                    new_context["viewing_log__preset"] = f
+                    new_context["entering_command"] = False
+                    new_context["command_type"] = None
+                    new_context["command"] = ""
+                    new_context["viewing_log__reload_log"] = False
+            return
+
+    x_offset = 1
     for i,log_filepath in enumerate(context['log_filepaths']):
         if i == context["selecting_log__list_pos"]:
             color = curses.color_pair(3)
         else:
             color = curses.color_pair(4)
-        context["stdscr"].addstr(i, 0, log_filepath, color)
+        context["stdscr"].addstr(x_offset+i, 0, log_filepath, color)
 
 def check_command(context):
+    if context["current_state"] == State.SELECTING_LOG:
+        return
     if context["entering_command"]:
         match context["pressed"]:
             case curses.KEY_DOWN:
@@ -137,6 +184,12 @@ def check_command(context):
                 """"""
             case Shortcut.SEARCH_COMMAND:
                 """"""
+            case Shortcut.NEW_VIEW_COMMAND:
+                """"""
+            case Shortcut.NEXT_VIEW:
+                process_command(context)
+                context["entering_command"] = False
+                context["command_type"] = None
             case _:
                 context["entering_command"] = False
                 context["command_type"] = None
@@ -228,10 +281,39 @@ def process_command(context):
                 context["viewing_log__pos"] = min(max(0,context["viewing_log__pos"]), 
                                               len(context["viewing_log__messages"]))
             context["command_search_pos"] = pos
-
+        case Shortcut.NEW_VIEW_COMMAND:
+            if command =="":
+                return
+            view_name = command
+            context = add_view(context["parent"], view_name)
+            context["parent"]["active_view"] = len(context["parent"]["views"])-1
+            context["entering_command"] = False
+            context["command_type"] = None
+            context["command"] = ""
+            context["viewing_log__reload_log"] = False
+            return
+        case Shortcut.NEXT_VIEW:
+            """"""
+            context["parent"]["active_view"] = (context["parent"]["active_view"]+1)%len(context["parent"]["views"])
         case _:
             """"""
-    update_log(context)
+    if context["current_state"] == State.VIEWING_LOG:
+        update_log(context)
+
+def add_view(parent, name):
+    if len(parent["views"]) == 0:
+        context = init_context(parent["stdscr"])
+        context["parent"] = parent
+    else:
+        i = parent["active_view"]
+        while parent["views"][i]["viewing_log__preset"] != None:
+            i -= 1
+
+        context = copy.copy(parent["views"][i])
+    context["view_name"] = name
+    parent["views"].append(context)
+    return context
+
 
 def update_log(context):
     if context["viewing_log__logger"] == None:
@@ -295,27 +377,36 @@ def state_viewing_log(context):
     width = context["width"]
     messages = context["viewing_log__messages"]
     h_offset = context["viewing_log__horizontal_offset"]
+    y_offset = 1
     for i in range(context["viewing_log__offset"], 
                    min(context["viewing_log__offset"]+context["viewer_height"],len(messages))):
-        y = 0
-        timestamp = messages[i][Log.TIME]/1000000
-        time_line = f"{timestamp:.3f}s "
-        color = curses.color_pair(4)
-        if i == context["command_search_pos"]:
-            color = curses.color_pair(2)
-        context["stdscr"].addstr(i-context["viewing_log__offset"], 0, time_line, color)
-        y += len(time_line)
+        if messages[i][Log.TIME] == None: # if unformatted message
+            message = messages[i][Log.MESSAGE][:width-1]
+            if message.startswith("^"):
+                line = f"{message[1:]:^{width-1}}"
+            else: 
+                line = f"{message:<{width-1}}"
+            context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], 0, line, curses.color_pair(4))
+        else:
+            x = 0
+            timestamp = messages[i][Log.TIME]/1000000
+            time_line = f"{timestamp:.3f}s "
+            color = curses.color_pair(4)
+            if i == context["command_search_pos"]:
+                color = curses.color_pair(2)
+            context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], 0, time_line, color)
+            x += len(time_line)
 
-        node_id = messages[i][Log.NODE_ID]
-        color = curses.color_pair(4+node_id)
-        node = f"{'#'+str(node_id)+'|':>4}"
-        context["stdscr"].addstr(i-context["viewing_log__offset"], y, node, color)
-        y += len(node)
-        module = f"{Log.revert_modules[messages[i][Log.LOG_MODULE]]:^{context['viewing_log__logger'].max_modulename_length}}| "
-        context["stdscr"].addstr(i-context["viewing_log__offset"], y, module, color)
-        y += len(module)
-        message = messages[i][Log.MESSAGE][h_offset:width+h_offset-1-y]
-        context["stdscr"].addstr(i-context["viewing_log__offset"], y, f"{message:<{width-y-1}}", color)
+            node_id = messages[i][Log.NODE_ID]
+            color = curses.color_pair(4+node_id)
+            node = f"{'#'+str(node_id)+'|':>4}"
+            context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], x, node, color)
+            x += len(node)
+            module = f"{Log.revert_modules[messages[i][Log.LOG_MODULE]]:^{context['viewing_log__logger'].max_modulename_length}}| "
+            context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], x, module, color)
+            x += len(module)
+            message = messages[i][Log.MESSAGE][h_offset:width+h_offset-1-x]
+            context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], x, f"{message:<{width-x-1}}", color)
 
 def state_viewing_script(context):
 
@@ -356,16 +447,36 @@ def state_viewing_script(context):
     width = context["width"]
     lines = context["viewing_script__lines"]
     h_offset = context["viewing_script__horizontal_offset"]
+    x_offset = 1
     for i in range(context["viewing_script__offset"], 
                    min(context["viewing_script__offset"]+context["viewer_height"],len(lines))):
         line = lines[i][h_offset:width+h_offset-1]
-        context["stdscr"].addstr(i-context["viewing_script__offset"], 0, line, curses.color_pair(4))
+        context["stdscr"].addstr(x_offset+i-context["viewing_script__offset"], 0, line, curses.color_pair(4))
+
+def draw_view_bar(context):
+    if context["current_state"] == State.SELECTING_LOG:
+        return
+    width = context["width"]
+    active_view = context["parent"]["active_view"]
+    x = 1
+    text = "  Views :  "
+    context["stdscr"].addstr(0, x, text, curses.color_pair(4))
+    x += len(text)
+    for i, view in enumerate(context["parent"]["views"]):
+        label = f"  {view['view_name']}  "
+        if i == active_view:
+            color = curses.color_pair(3)
+        else:
+            color = curses.color_pair(4)
+        context["stdscr"].addstr(0, x, label, color)
+        x+=len(label)
+        
 
 def draw_status_bar(context):
     width = context["width"]
     if context["entering_command"]:
         if context["command_type"] == Shortcut.SCRIPT_COMMAND:
-            y = context["viewer_height"] - len(context["script_command__functions"]) - 1
+            y = context["viewer_height"] - len(context["script_command__functions"])
             prompt = "Select a script to run :"
             context["stdscr"].addstr(y, 0, f"{prompt:<{width-1}}", curses.color_pair(3))
             for i, function in enumerate(context["script_command__functions"]):
@@ -396,13 +507,15 @@ def draw_status_bar(context):
                     prompt = "FILTER LOG LEVEL"
                 case Shortcut.SEARCH_COMMAND:
                     prompt = "SEARCH"
+                case Shortcut.NEW_VIEW_COMMAND:
+                    prompt = "NEW VIEW NAME"
                 case _:
                     prompt = ""
             if prompt != "":
                 prompt = f"[{prompt}]"
             line = f"{prompt} {context['command']}"
             context["stdscr"].addstr(context["viewer_height"], 0, prompt, curses.color_pair(3))
-            context["stdscr"].addstr(context["viewer_height"], len(prompt)+1, f"{context['command']:<{context['width']-len(prompt)-2}}", 4)
+            context["stdscr"].addstr(context["viewer_height"], len(prompt), f" {context['command']:<{context['width']-len(prompt)-2}}", 4)
     else:
         line = "Filters:"
         filters = []
@@ -424,9 +537,27 @@ def draw_status_bar(context):
             line = f"{context['viewing_log__offset']}/{len(context['viewing_log__messages'])} {(context['viewing_log__offset']/len(context['viewing_log__messages'])*100):.0f}%"
             context["stdscr"].addstr(context["viewer_height"], width-len(line)-1, line, curses.color_pair(3))
 
+def draw_context(context):
+    context["height"], context["width"] = context["stdscr"].getmaxyx()
+    context["viewer_height"] = context["height"] - 2
+    context["viewer_width"] = context["width"]
+
+
+    match context["current_state"]:
+        case State.SELECTING_LOG:
+            state_selecting_log(context)
+        case State.VIEWING_LOG:
+            state_viewing_log(context)
+        case State.VIEWING_SCRIPT:
+            state_viewing_script(context)
+
+    draw_status_bar(context)
+    draw_view_bar(context)
+
 def draw_menu(stdscr):
-    context = init_context()
-    context["stdscr"] = stdscr
+    global parent
+    parent = {"active_view":0, "views":[], "stdscr":stdscr}
+
     cursor_x = 0
     cursor_y = 0
 
@@ -444,83 +575,19 @@ def draw_menu(stdscr):
 
     curses.curs_set(0)
 
+    add_view(parent, "Main")
+
+    context = parent["views"][parent["active_view"]]
+
+
     # Loop where k is the last character pressed
     while (context["pressed"] != ord('q') or context["entering_command"]):
         # Initialization
         stdscr.clear()
-        context["height"], context["width"] = stdscr.getmaxyx()
-        context["viewer_height"] = context["height"] - 1
-        context["viewer_width"] = context["width"]
-
+        
         check_command(context)
-
-        match context["current_state"]:
-            case State.SELECTING_LOG:
-                state_selecting_log(context)
-            case State.VIEWING_LOG:
-                state_viewing_log(context)
-            case State.VIEWING_SCRIPT:
-                state_viewing_script(context)
-
-        draw_status_bar(context)
-
-        """
-        if k == curses.KEY_DOWN:
-            cursor_y = cursor_y + 1
-        elif k == curses.KEY_UP:
-            cursor_y = cursor_y - 1
-        elif k == curses.KEY_RIGHT:
-            cursor_x = cursor_x + 1
-        elif k == curses.KEY_LEFT:
-            cursor_x = cursor_x - 1
-
-        cursor_x = max(0, cursor_x)
-        cursor_x = min(width-1, cursor_x)
-
-        cursor_y = max(0, cursor_y)
-        cursor_y = min(height-1, cursor_y)
-
-        # Declaration of strings
-        title = "Curses example"[:width-1]
-        subtitle = "Written by Clay McLeod"[:width-1]
-        keystr = "Last key pressed: {}".format(k)[:width-1]
-        statusbarstr = "Press 'q' to exit | STATUS BAR | Pos: {}, {}".format(cursor_x, cursor_y)
-        if k == 0:
-            keystr = "No key press detected..."[:width-1]
-
-        # Centering calculations
-        start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
-        start_x_subtitle = int((width // 2) - (len(subtitle) // 2) - len(subtitle) % 2)
-        start_x_keystr = int((width // 2) - (len(keystr) // 2) - len(keystr) % 2)
-        start_y = int((height // 2) - 2)
-
-        # Rendering some text
-        whstr = "Width: {}, Height: {}".format(width, height)
-        stdscr.addstr(0, 0, whstr, curses.color_pair(1))
-
-        # Render status bar
-        stdscr.attron(curses.color_pair(3))
-        stdscr.addstr(height-1, 0, statusbarstr)
-        stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
-        stdscr.attroff(curses.color_pair(3))
-
-        # Turning on attributes for title
-        stdscr.attron(curses.color_pair(2))
-        stdscr.attron(curses.A_BOLD)
-
-        # Rendering title
-        stdscr.addstr(start_y, start_x_title, title)
-
-        # Turning off attributes for title
-        stdscr.attroff(curses.color_pair(2))
-        stdscr.attroff(curses.A_BOLD)
-
-        # Print rest of text
-        stdscr.addstr(start_y + 1, start_x_subtitle, subtitle)
-        stdscr.addstr(start_y + 3, (width // 2) - 2, '-' * 4)
-        stdscr.addstr(start_y + 5, start_x_keystr, keystr)
-        stdscr.move(cursor_y, cursor_x)
-        """
+        context = parent["views"][parent["active_view"]]
+        draw_context(context)
 
         # Refresh the screen
         stdscr.refresh()
@@ -528,10 +595,11 @@ def draw_menu(stdscr):
         # Wait for next input
         context["pressed"] = stdscr.getch()
 
-def main(_path, _scripts):
-    global path, scripts
+def main(_path, _scripts, _views):
+    global path, scripts, views
     path = _path
     scripts = _scripts
+    views = _views
     curses.wrapper(draw_menu)
 
 def get_log_filepaths():

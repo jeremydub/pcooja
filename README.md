@@ -103,3 +103,47 @@ python3 -m pcooja.logviewer -s ~/pcooja/examples/logviewer_script.py
 ```
 
 
+## Views
+
+In addition to scripts, it is also possible to create views that you want to be generated automatically when viewing a log. It allows for categorization and filtering of messages. In order to do so, you need to add a function (in the script python module) starting with "view" and taking "log" as a unique parameter.
+
+Let say we want to automatically create a view that organize serial messages from TSCH mac layer.
+
+```python
+def view_tsch(log):
+    """
+    TSCH
+    """
+    print("^Joined network") # if string starts with "^", it centers the text
+    tsch_joined = log.get_messages(contain="minimal schedule")
+    if len(tsch_joined) == 0:
+        print("No node ...")
+    else:
+        print(tsch_joined)
+
+    print("^Schedules")
+    tsch_schedules = log.get_messages(log_module="TSCH Sched")
+    tsch_schedules.sort(key=lambda message: message[Log.NODE_ID])
+    print(tsch_schedules)
+
+    print("^Queues")
+    tsch_queues = log.get_messages(log_module="TSCH Queue")
+    tsch_queues.sort(key=lambda message: message[Log.NODE_ID])
+    print(tsch_queues)
+```
+
+Another example show how to only show the generated view if necessary. For instance, we want to create a view to show error messages only if there are error messages. All you need to do is return `False` and the view will not be added to the list of views
+
+```python
+def view_errors(log):
+    """
+    Errors
+    """
+    error_messages = log.get_messages(log_level=Log.LEVEL_ERR)
+    if len(error_messages) == 0:
+        return False
+    else:
+        print(error_messages)
+
+```
+
