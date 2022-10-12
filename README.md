@@ -76,6 +76,7 @@ When viewing a Cooja log, you can navigate using up/down/left/right arrows. Seve
 | Reset filters       |    r    | Remove every filter |
 | Script              |    s    | Select a script to apply on log |
 | Search              |    /    | Sentence to search : `Hello World` |
+| View                |    v    | name of the new view to create : `My View` |
 
 ## Scripts
 
