@@ -132,18 +132,18 @@ def draw_viewinglog(context):
             context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], 0, line, curses.color_pair(4))
         else:
             x = 0
+            node_id = messages[i][Log.NODE_ID]
             timestamp = messages[i][Log.TIME]/1000000
             time_line = f"{timestamp:.3f}"
             time_line = f"{time_line:>{timestamp_width}}s "
-            color = curses.color_pair(4)
+            color = curses.color_pair(1)
             if i == context["command_search_pos"]:
                 color = curses.color_pair(2)
             elif i == context["viewing_log__pos"]:
-                color = curses.color_pair(3)
+                color = curses.color_pair(get_color_highlight(node_id))
             context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], 0, time_line, color)
             x += len(time_line)
 
-            node_id = messages[i][Log.NODE_ID]
             if i == context["viewing_log__pos"]:
                 color = curses.color_pair(get_color_highlight(node_id))
             else:
