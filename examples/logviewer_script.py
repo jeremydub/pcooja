@@ -57,18 +57,19 @@ def view_app(log):
     """
     App
     """
+    messages = log.get_messages(log_module="App")
     for node_id in log.get_node_ids():
         print(f"^Node #{node_id}")
         if node_id == 1:
-            app_messages = log.get_messages(log_module="App", node_id=node_id, contain="Received")
-            app_messages2 = log.get_messages(log_module="App", node_id=node_id, contain="Sending")
-            app_messages += app_messages2
+            app_messages = Log.filter_messages(messages, node_id=node_id, contain="Sending")
+            app_messages2 = Log.filter_messages(messages, node_id=node_id, contain="Received")
+            app_messages.extend(app_messages2)
             app_messages.sort(key=lambda message: message[Log.TIME])
             print(app_messages)
         else:
-            app_messages = log.get_messages(log_module="App", node_id=node_id, contain="Sending")
-            app_messages2 = log.get_messages(log_module="App", node_id=node_id, contain="Received")
-            app_messages += app_messages2
+            app_messages = Log.filter_messages(messages, node_id=node_id, contain="Sending")
+            app_messages2 = Log.filter_messages(messages, node_id=node_id, contain="Received")
+            app_messages.extend(app_messages2)
             app_messages.sort(key=lambda message: message[Log.TIME])
             print(app_messages)
 

@@ -94,13 +94,15 @@ def change_view(parent, increment):
                     start = middle
                 else:
                     end = middle
-            middle+=1
-
-            while middle < len(messages)-1 and messages[middle] != current_message \
-                                           and messages[middle][Log.TIME] == current_message[Log.TIME]:
-                middle += 1
             if messages[middle] == current_message:
                 match_pos = middle
+            else:
+                middle+=1
+                while middle < len(messages)-1 and messages[middle] != current_message \
+                                               and messages[middle][Log.TIME] == current_message[Log.TIME]:
+                    middle += 1
+                if messages[middle] == current_message:
+                    match_pos = middle
 
     if match_pos != None:
         set_cursor(new_view, match_pos)

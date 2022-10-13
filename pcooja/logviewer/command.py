@@ -172,7 +172,7 @@ def process_command(context):
             pos = None
             for i, message in enumerate(context["viewing_log__messages"]):
                 if text in message[Log.MESSAGE]:
-                    pos = i
+                    pos = i+1
                     break
             if pos != None:
                 set_cursor(context, pos)
