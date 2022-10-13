@@ -83,10 +83,11 @@ class Log:
             module_name = Log.revert_modules[message[Log.LOG_MODULE]]
             if len(module_name) > max_modulename_length:
                 max_modulename_length = len(module_name)
-        self.max_modulename_length=max_modulename_length
         self.messages = messages
         self.dico = nid_to_messages
         self.node_ids = list(nid_to_messages.keys())
+        # infos for pretty printing
+        self.max_modulename_length=max_modulename_length
 
     def get_messages(self, *args, **kwargs):
         return Log.filter_messages(self.messages, *args, **kwargs)

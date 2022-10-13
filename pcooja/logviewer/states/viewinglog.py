@@ -1,4 +1,5 @@
 import curses
+import math
 
 from .. import Shortcut
 from . import State
@@ -110,6 +111,16 @@ def draw_viewinglog(context):
     messages = context["viewing_log__messages"]
     h_offset = context["viewing_log__horizontal_offset"]
     y_offset = 1
+
+    # Calculating width of timestamp field
+    max_timestamp = 1000000 # at least 1 digit, i.e 1 second
+    for i in range(context["viewing_log__offset"], 
+                   min(context["viewing_log__offset"]+context["viewer_height"],len(messages))):
+        t = messages[i][Log.TIME]
+        if t != None and t > max_timestamp: # if formatted message
+            max_timestamp = t
+    timestamp_width = math.ceil(math.log10(max_timestamp/1000000))+4
+
     for i in range(context["viewing_log__offset"], 
                    min(context["viewing_log__offset"]+context["viewer_height"],len(messages))):
         if messages[i][Log.TIME] == None: # if unformatted message
@@ -122,7 +133,8 @@ def draw_viewinglog(context):
         else:
             x = 0
             timestamp = messages[i][Log.TIME]/1000000
-            time_line = f"{timestamp:.3f}s "
+            time_line = f"{timestamp:.3f}"
+            time_line = f"{time_line:>{timestamp_width}}s "
             color = curses.color_pair(4)
             if i == context["command_search_pos"]:
                 color = curses.color_pair(2)
