@@ -21,12 +21,14 @@ def state_selecting_log(context):
                 messages = []
                 def script_print(*args, **kwargs):
                     if len(args) == 1 and len(kwargs) == 0:
-                        if type(args[0]) == list:
+                        if type(args[0]) == list and len(args[0]) > 0 \
+                                and type(args[0][0]) == tuple \
+                                and len(args[0][0])==5:
                             messages.extend(args[0])
-                        elif type(args[0]) == str:
-                            messages.append(context["viewing_log__logger"].parse_message(None, None, args[0]))
-                        else:
+                        elif type(args[0]) == tuple and len(args[0])==5:
                             messages.append(args[0])
+                        else:
+                            messages.append(context["viewing_log__logger"].parse_message(None, None, str(args[0])))
                     else:
                         buffer = io.StringIO()
                         kwargs["file"] = buffer

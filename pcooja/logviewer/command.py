@@ -105,9 +105,9 @@ def process_command(context):
             context["command_filter_contain"] = text
             context["viewing_log__reload_log"] = True
         case Shortcut.FILTER_TIME_COMMAND:
-            time = int(command)*1000000
             pos = None
             if command.isdigit():
+                time = int(command)*1000000
                 if context["viewing_log__preset"] != None:
                     for i, message in enumerate(context["viewing_log__messages"]):
                         if message[Log.TIME] != None and message[Log.TIME] >= time:

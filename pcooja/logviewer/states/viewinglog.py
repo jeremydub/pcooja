@@ -45,6 +45,9 @@ def set_cursor(context, y):
     
     if context["viewing_log__messages"][y][Log.NODE_ID] == None and context["viewing_log__pos"] != None:
         y = move_cursor(context, 1)
+
+    if y == None:
+        return
     
     if y >= old_y_offset+context["viewer_height"]:
         y_offset = y-context["viewer_height"]+1
@@ -86,10 +89,15 @@ def move_cursor(context, y_increment):
             for y in range(y_pos, old_y_pos-step, -step):
                 if messages[y][Log.NODE_ID] != None:
                     y_pos = y
+                    move_view(context, step)
                     break
-
-    set_cursor(context, y_pos)
-    return y_pos
+    
+    if messages[y_pos][Log.NODE_ID] != None:
+        set_cursor(context, y_pos)
+        return y_pos
+    else:
+        move_view(context, y_increment)
+        return None
 
 def move_view(context, y_increment=0, x_increment=0):
     y_offset = context["viewing_log__offset"] + y_increment
@@ -101,10 +109,11 @@ def move_view(context, y_increment=0, x_increment=0):
     
     y_pos = context["viewing_log__pos"]
 
-    if y_pos >= y_offset+context["viewer_height"]:
-        context["viewing_log__pos"] = y_offset+context["viewer_height"]-1
-    elif y_pos < y_offset:
-        context["viewing_log__pos"] = y_offset
+    if y_pos != None:
+        if y_pos >= y_offset+context["viewer_height"]:
+            context["viewing_log__pos"] = y_offset+context["viewer_height"]-1
+        elif y_pos < y_offset:
+            context["viewing_log__pos"] = y_offset
 
 def draw_viewinglog(context):
     width = context["width"]
@@ -124,11 +133,11 @@ def draw_viewinglog(context):
     for i in range(context["viewing_log__offset"], 
                    min(context["viewing_log__offset"]+context["viewer_height"],len(messages))):
         if messages[i][Log.TIME] == None: # if unformatted message
-            message = messages[i][Log.MESSAGE][:width-1]
+            message = messages[i][Log.MESSAGE]
             if message.startswith("^"):
                 line = f"{message[1:]:^{width-1}}"
             else: 
-                line = f"{message:<{width-1}}"
+                line = message[h_offset:h_offset+width-1]
             context["stdscr"].addstr(y_offset+i-context["viewing_log__offset"], 0, line, curses.color_pair(4))
         else:
             x = 0
@@ -190,4 +199,6 @@ def update_log(context):
         context["viewing_log__pos"] = 0 
         if context["parent"]["last_selected_message"] == None:
             context["parent"]["last_selected_message"] = context["viewing_log__messages"][context["viewing_log__pos"]]
+        from ..context import change_view
+        change_view(context["parent"], 0)
 

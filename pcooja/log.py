@@ -4,7 +4,7 @@ import re
     
 def contiki_ng_default_parser(time, node_id, message):
     if node_id == None:
-        return (None, None, None, None, message.strip())
+        return (None, None, None, None, message.rstrip())
     i_end = message.find("]")
     if message[0] == "[" and i_end != -1:
         i2 = message.find(':')
