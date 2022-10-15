@@ -2,6 +2,7 @@ import curses
 
 from . import State
 from .viewinglog import state_viewing_log
+from .. import Log
 
 def state_viewing_script(context):
 
@@ -45,6 +46,6 @@ def state_viewing_script(context):
     x_offset = 1
     for i in range(context["viewing_script__offset"], 
                    min(context["viewing_script__offset"]+context["viewer_height"],len(lines))):
-        line = lines[i][h_offset:width+h_offset-1]
+        line = lines[i][Log.MESSAGE][h_offset:width+h_offset-1]
         context["stdscr"].addstr(x_offset+i-context["viewing_script__offset"], 0, line, curses.color_pair(4))
 

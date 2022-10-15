@@ -5,7 +5,7 @@ import traceback
 from . import Shortcut
 from . import Log
 from .states import State
-from .states.viewinglog import update_log, set_cursor, move_view
+from .states.viewinglog import update_log, set_cursor, move_view, populate_messages
 from .context import add_view, change_view
 
 def check_command(context):
@@ -157,20 +157,9 @@ def process_command(context):
         case Shortcut.SCRIPT_COMMAND:
             if len(context["script_command__functions"]) > 0:
                 f = context["script_command__functions"][context["script_command__select_pos"]]
-                
-                buffer = io.StringIO()
-                def script_print(*args,**kwargs):
-                    kwargs["file"] = buffer
-                    print(*args, **kwargs)
-
-                f.__globals__['print'] = script_print
-                try:
-                    f(Log(messages=context["viewing_log__messages"]))
-                    context["viewing_script__lines"] = buffer.getvalue().split("\n")
-                except Exception:
-                    tb = traceback.format_exc()
-                    context["viewing_script__lines"] = tb.split("\n")
-                del(f.__globals__['print'])
+                messages = []
+                populate_messages(context, f, messages)
+                context["viewing_script__lines"] = messages
                 context["current_state"] = State.VIEWING_SCRIPT
                 context["pressed"] = 0
         case Shortcut.SEARCH_COMMAND:

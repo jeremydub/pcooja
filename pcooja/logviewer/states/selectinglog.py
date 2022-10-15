@@ -3,7 +3,7 @@ import io
 import traceback
 
 from . import State
-from .viewinglog import state_viewing_log
+from .viewinglog import state_viewing_log, populate_messages
 from ..context import add_view
 from .. import Log
 
@@ -19,30 +19,7 @@ def state_selecting_log(context):
             state_viewing_log(context)
             for f in context["viewing_log__presets"]:
                 messages = []
-                def script_print(*args, **kwargs):
-                    if len(args) == 1 and len(kwargs) == 0:
-                        if type(args[0]) == list and len(args[0]) > 0 \
-                                and type(args[0][0]) == tuple \
-                                and len(args[0][0])==5:
-                            messages.extend(args[0])
-                        elif type(args[0]) == tuple and len(args[0])==5:
-                            messages.append(args[0])
-                        else:
-                            messages.append(context["viewing_log__logger"].parse_message(None, None, str(args[0])))
-                    else:
-                        buffer = io.StringIO()
-                        kwargs["file"] = buffer
-                        print(*args, **kwargs)
-
-                f.__globals__['print'] = script_print
-                enable = True
-                try:
-                    enable = f(context["viewing_log__logger"])
-                except Exception:
-                    tb = traceback.format_exc()
-                    for line in tb.split("\n"):
-                        messages.append(context["viewing_log__logger"].parse_message(None, None, line))
-                del(f.__globals__['print'])
+                enable = populate_messages(context, f, messages)
                 if enable != False:
                     view_name = f.__doc__.strip()[:20]
                     new_context = add_view(context["parent"], view_name)

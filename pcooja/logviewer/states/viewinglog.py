@@ -5,7 +5,7 @@ from .. import Shortcut
 from . import State
 from .. import Log
         
-_colors = [2,3,4,5,6]+list(range(9,16))+[80,35,40,126,200,227,195,100,203]
+_colors = [2,3,4,5,6]+list(range(9,16))+[80,35,39,126,95,227,195,250,203]
 
 def state_viewing_log(context):
 
@@ -202,3 +202,29 @@ def update_log(context):
         from ..context import change_view
         change_view(context["parent"], 0)
 
+def populate_messages(context, function, messages):
+    def script_print(*args, **kwargs):
+        if len(args) == 1 and len(kwargs) == 0:
+            if type(args[0]) == list and len(args[0]) > 0 \
+                    and type(args[0][0]) == tuple \
+                    and len(args[0][0])==5:
+                messages.extend(args[0])
+            elif type(args[0]) == tuple and len(args[0])==5:
+                messages.append(args[0])
+            else:
+                messages.append(context["viewing_log__logger"].parse_message(None, None, str(args[0])))
+        else:
+            buffer = io.StringIO()
+            kwargs["file"] = buffer
+            print(*args, **kwargs)
+            messages.append(buffer.getvalue().split("\n"))
+
+    function.__globals__['print'] = script_print
+    enable = True
+    try:
+        enable = function(context["viewing_log__logger"])
+    except Exception:
+        tb = traceback.format_exc()
+        for line in tb.split("\n"):
+            messages.append(context["viewing_log__logger"].parse_message(None, None, line))
+    del(function.__globals__['print'])
