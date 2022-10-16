@@ -1,5 +1,6 @@
 import curses
 import math
+import traceback
 
 from .. import Shortcut
 from . import State

@@ -76,17 +76,18 @@ class CoojaSimulation:
         """ Change the default script file """
         self.script_runner = script_runner
 
-    def run(self, log_file=None, pcap_file=None, enable_log=True, enable_pcap=True, with_gui=False, export=True):
+    def run(self, log_file=None, pcap_file=None, enable_log=True, 
+            enable_pcap=False, with_gui=False, export=True):
         if self.script_runner == None:
-            self.script_runner = TimeoutScript(self.timeout, with_gui=False)
+            self.script_runner = TimeoutScript(self.timeout, with_gui=with_gui)
         if log_file == None:
             log_file = f"{self.title}.log"
         if pcap_file == None:
             pcap_file = f"{self.title}.pcap"
         try:
             if export:
-                self.export(self.temp_dir, gui_enabled=with_gui)
-
+                self.export(self.temp_dir, gui_enabled=with_gui, 
+                            enable_log=enable_log, enable_pcap=enable_pcap)
             
             if self.progress_bar_handler == None:
                 logger.info("Starting Simulation")
@@ -176,11 +177,6 @@ class CoojaSimulation:
                     progress = int(parts[0].split()[-1][:-1])
                     self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
                                                      description = f"{self.title} | [cyan]Running")
-                elif "Simulated time" in line:
-                    progress = 100
-                    self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
-                                                     description = f"{self.title} | [green]Completed")
-                    break
                 elif "Script timeout in" in line:
                     progress = 0
                     self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
@@ -190,8 +186,23 @@ class CoojaSimulation:
                 elif "Segmentation fault" in line or "Java Result: 139" in line:
                     self.segfaulted = True
                 elif "TEST FAILED" in line:
+                    progress = 100
                     self.test_failed = True
+                elif "TEST OK" in line:
+                    progress = 100
+                    break
+                elif "BUILD SUCCESSFUL" in line:
+                    break
         p.stdout.close()
+
+        description = f"{self.title}"
+        if progress == 100:
+            description += " | [green]Completed" 
+        else:
+            description += " | [yellow]Aborted" 
+        self.progress_bar_handler.update(self.progress_bar_task, completed=progress,
+                                         description = description)
+
         self.return_value=p.wait()
         self.segfaulted = self.segfaulted or self.return_value == 139 or self.return_value == 134
         self.progress_bar_handler.update(self.progress_bar_task, completed=100)
@@ -268,7 +279,7 @@ class CoojaSimulation:
         else:
             return None
 
-    def export(self, folder=None, gui_enabled=False):
+    def export(self, folder=None, gui_enabled=False, enable_log=True, enable_pcap=False):
         if folder == None:
             folder = self.temp_dir
 
@@ -295,7 +306,10 @@ class CoojaSimulation:
         self.check_settings()
         logger.debug("Saving simulation as Cooja file (.csc)")
         self.csc_filepath = os.path.abspath(f"{folder}/simulation.csc")
-        CSCParser.export_simulation(self, self.csc_filepath, gui_enabled=gui_enabled)
+        CSCParser.export_simulation(self, self.csc_filepath, 
+                                    gui_enabled=gui_enabled, 
+                                    enable_log=enable_log, 
+                                    enable_pcap=enable_pcap)
 
     def __repr__(self):
         duration = str(self.timeout)

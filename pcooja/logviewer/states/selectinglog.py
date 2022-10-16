@@ -1,6 +1,5 @@
 import curses
 import io
-import traceback
 
 from . import State
 from .viewinglog import state_viewing_log, populate_messages
