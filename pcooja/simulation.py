@@ -301,6 +301,9 @@ class CoojaSimulation:
         if len(errors) > 0:
             for error in errors:
                 logger.error(error)
+            for mote_type in self.mote_types:
+                if mote_type.is_compilable():
+                    mote_type.remove_firmware()
             raise SettingsError("\n".join(errors))
 
         self.check_settings()

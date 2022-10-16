@@ -13,8 +13,17 @@ import os
 import sys
 import importlib.util
 import inspect
+import json
 
 args = docopt(__doc__, version="compress 0.1")
+
+def get_local_config():
+    path = ".pcooja.logviewer.conf"
+    config = None
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            config = json.load(f)
+    return config
 
 def importCode(code, name):
     """ code can be any object containing code -- string, file object, or
@@ -33,6 +42,12 @@ if __name__ == "__main__":
     script_files = args["-s"]
     functions = []
     views = []
+
+    local_config = get_local_config()
+    if local_config != None:
+        if "scripts" in local_config:
+            script_files.extend(local_config["scripts"])
+
     for i, script_file in enumerate(script_files):
         if not os.path.exists(script_file):
             print(f"Script file '{script_file}' does not exist",file=sys.stderr)
